@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kantor AI</title>
+<style>
+  :root{--bg:#0f1420;--panel:#171d2e;--line:#27304a;--ink:#e8ecf7;--mute:#8b95b3;--accent:#ffb84d}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+  h1{font-size:20px;margin:0 0 12px}
+  .wrap{display:grid;grid-template-columns:1fr 330px;gap:16px;padding:16px;max-width:1280px;margin:auto}
+  @media(max-width:900px){.wrap{grid-template-columns:1fr}}
+  #floor{position:relative;aspect-ratio:16/10;border:1px solid var(--line);border-radius:14px;overflow:hidden;
+    background:linear-gradient(var(--line) 1px,transparent 1px) 0 0/48px 48px,
+               linear-gradient(90deg,var(--line) 1px,transparent 1px) 0 0/48px 48px,#121827}
+  .desk,.place{position:absolute;transform:translate(-50%,-50%);text-align:center}
+  .desk .top{width:96px;height:34px;background:#2a3452;border:1px solid #3a4670;border-radius:8px}
+  .place .ico{font-size:34px}
+  .lbl{font-size:11px;color:var(--mute);margin-top:4px;white-space:nowrap}
+  .agent{position:absolute;transform:translate(-50%,-50%);text-align:center;z-index:5;
+    transition:left 1.2s ease-in-out,top 1.2s ease-in-out}
+  .face{width:46px;height:46px;border-radius:50%;background:var(--c);display:grid;place-items:center;
+    font-size:24px;border:2px solid #ffffff44;margin:auto}
+  .agent.working .face{animation:bob .45s infinite alternate}
+  @keyframes bob{to{transform:translateY(-5px)}}
+  .name{font-size:11px;margin-top:3px;font-weight:600}
+  .bubble{position:absolute;bottom:68px;left:50%;transform:translateX(-50%);background:#fff;color:#111;
+    font-size:12px;line-height:1.35;padding:7px 10px;border-radius:10px;width:max-content;max-width:210px;
+    opacity:0;transition:opacity .25s;pointer-events:none;z-index:9;text-align:left}
+  .bubble.show{opacity:1}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:16px}
+  .panel h2{font-size:13px;margin:0 0 10px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
+  #log{max-height:330px;overflow:auto;font-size:12.5px;line-height:1.45}
+  #log div{padding:5px 0;border-bottom:1px solid var(--line)}
+  #log b{color:var(--accent)}
+  #log small{color:var(--mute)}
+  #videos div{font-size:12.5px;padding:5px 0;border-bottom:1px solid var(--line)}
+  .tag{display:inline-block;font-size:10.5px;padding:1px 7px;border-radius:99px;background:#243052;margin-left:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div><h1>🏢 Kantor AI</h1><div id="floor"></div></div>
+  <div>
+    <div class="panel"><h2>Aktivitas</h2><div id="log"></div></div>
+    <div class="panel"><h2>Video</h2><div id="videos"></div></div>
+  </div>
+</div>
+<script>
+const floor = document.getElementById('floor');
+const logEl = document.getElementById('log');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let cfg, spots = {}, homes = {}, nodes = {}, names = {}, lastId = 0, queue = [], running = false;
+
+function put(el, x, y){ el.style.left = x + '%'; el.style.top = y + '%'; }
+function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+
+function stand(targetId, actorId){
+  const t = spots[targetId], h = homes[actorId];
+  const side = h.x <= t.x ? -1 : 1;
+  return { x: clamp(t.x + side * 8, 5, 95), y: clamp(t.y + 12, 8, 92) };
+}
+
+function bubble(el, text){
+  const b = el.querySelector('.bubble');
+  b.textContent = text;
+  b.classList.add('show');
+  clearTimeout(b._t);
+  b._t = setTimeout(() => b.classList.remove('show'), 3200);
+}
+
+function addLog(ev, quiet){
+  const who = names[ev.actor] || ev.actor;
+  const to = ev.target ? ' → ' + (names[ev.target] || ev.target) : '';
+  const d = document.createElement('div');
+  const t = new Date(ev.ts * 1000).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  d.innerHTML = '<small>' + t + '</small> <b>' + who + to + '</b>: ';
+  d.appendChild(document.createTextNode(ev.text || ev.action));
+  logEl.prepend(d);
+}
+
+async function handle(ev){
+  addLog(ev);
+  const n = nodes[ev.actor];
+  if (!n) return;
+  const el = n;
+  if (ev.action === 'walk_to' && spots[ev.target]){
+    el.classList.remove('working');
+    const p = stand(ev.target, ev.actor);
+    put(el, p.x, p.y);
+    await sleep(1300);
+    bubble(el, ev.text);
+    await sleep(2300);
+  } else if (ev.action === 'back'){
+    el.classList.remove('working');
+    put(el, homes[ev.actor].x, homes[ev.actor].y);
+    await sleep(1300);
+  } else if (ev.action === 'work'){
+    el.classList.add('working');
+    bubble(el, ev.text);
+    await sleep(1800);
+  } else {
+    el.classList.remove('working');
+    bubble(el, ev.text);
+    await sleep(2300);
+  }
+}
+
+async function loop(){
+  if (running) return;
+  running = true;
+  while (queue.length) await handle(queue.shift());
+  running = false;
+}
+
+async function poll(){
+  try{
+    const rows = await (await fetch('/api/events?after=' + lastId)).json();
+    rows.forEach(e => { lastId = e.id; queue.push(e); });
+    loop();
+  }catch(e){}
+}
+
+async function refreshVideos(){
+  try{
+    const rows = await (await fetch('/api/videos')).json();
+    const box = document.getElementById('videos');
+    box.innerHTML = '';
+    if (!rows.length) box.textContent = 'Belum ada video.';
+    rows.forEach(v => {
+      const d = document.createElement('div');
+      d.textContent = v.id + ' · ' + v.idea.slice(0, 45) + '…';
+      const s = document.createElement('span'); s.className = 'tag'; s.textContent = v.status;
+      d.appendChild(s); box.appendChild(d);
+    });
+  }catch(e){}
+}
+
+async function init(){
+  cfg = await (await fetch('/api/agents')).json();
+  cfg.places.forEach(p => {
+    const d = document.createElement('div'); d.className = 'place';
+    d.innerHTML = '<div class="ico">' + p.emoji + '</div><div class="lbl">' + p.name + '</div>';
+    put(d, p.x, p.y); floor.appendChild(d);
+    spots[p.id] = { x: p.x, y: p.y }; names[p.id] = p.name;
+  });
+  cfg.agents.forEach(a => {
+    const desk = document.createElement('div'); desk.className = 'desk';
+    desk.innerHTML = '<div class="top"></div><div class="lbl">' + a.role + '</div>';
+    put(desk, a.desk.x, a.desk.y); floor.appendChild(desk);
+    spots[a.id] = { x: a.desk.x, y: a.desk.y }; names[a.id] = a.name;
+    homes[a.id] = { x: a.desk.x, y: a.desk.y + 13 };
+
+    const el = document.createElement('div'); el.className = 'agent';
+    el.style.setProperty('--c', a.color);
+    el.innerHTML = '<div class="bubble"></div><div class="face">' + a.emoji + '</div><div class="name">' + a.name + '</div>';
+    put(el, homes[a.id].x, homes[a.id].y); floor.appendChild(el);
+    nodes[a.id] = el;
+  });
+  const recent = await (await fetch('/api/events?recent=12')).json();
+  recent.forEach(e => { lastId = Math.max(lastId, e.id); addLog(e, true); });
+  refreshVideos();
+  setInterval(poll, 1000);
+  setInterval(refreshVideos, 5000);
+}
+init();
+</script>
+</body>
+</html>

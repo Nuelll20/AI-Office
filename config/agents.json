@@ -1,0 +1,13 @@
+{
+  "agents": [
+    {"id": "adit", "name": "Adit", "role": "Scout",             "emoji": "🕵️", "color": "#3b82f6", "desk": {"x": 12, "y": 22}},
+    {"id": "agus", "name": "Agus", "role": "Creative Director", "emoji": "🎨", "color": "#a855f7", "desk": {"x": 37, "y": 22}},
+    {"id": "rina", "name": "Rina", "role": "Writer",            "emoji": "✍️", "color": "#ec4899", "desk": {"x": 62, "y": 22}},
+    {"id": "bayu", "name": "Bayu", "role": "Visual Director",   "emoji": "🎬", "color": "#f59e0b", "desk": {"x": 87, "y": 22}},
+    {"id": "sari", "name": "Sari", "role": "Editor & QC",       "emoji": "🎞️", "color": "#10b981", "desk": {"x": 62, "y": 62}}
+  ],
+  "places": [
+    {"id": "telegram", "name": "Telegram (HP Bos)", "emoji": "📱", "x": 20, "y": 70},
+    {"id": "outbox",   "name": "Siap Upload",       "emoji": "📤", "x": 88, "y": 72}
+  ]
+}

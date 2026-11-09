@@ -1,0 +1,2 @@
+# Hanya dibutuhkan untuk mode asli (LLM). Mode mock jalan tanpa install apa pun.
+anthropic>=0.40.0

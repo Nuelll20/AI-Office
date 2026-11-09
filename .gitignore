@@ -1,0 +1,33 @@
+# Kredensial dan konfigurasi lokal
+.env
+.env.*
+!.env.example
+
+# Lingkungan Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Database dan hasil produksi
+data/
+output/
+*.db
+*.db-wal
+*.db-shm
+
+# Model lokal
+models/
+*.safetensors
+*.ckpt
+
+# Log dan berkas sementara
+logs/
+*.log
+tmp/
+temp/
+
+# Berkas sistem operasi
+.DS_Store
+Thumbs.db

@@ -1,0 +1,74 @@
+{
+  "theme": "cerita misteri dan twist ending yang cocok untuk Shorts",
+  "min_elements_different": 3,
+  "history_size": 6,
+  "duration_range": [25, 55],
+
+  "genres": [
+    {"id": "misteri_twist",  "desc": "misteri dengan twist ending"},
+    {"id": "horor_ringan",   "desc": "horor ringan yang menggantung, tanpa gore"},
+    {"id": "bagaimana_jika", "desc": "skenario 'bagaimana jika' yang mengubah sudut pandang"},
+    {"id": "kisah_moral",    "desc": "kisah singkat dengan pesan moral yang menyentuh"},
+    {"id": "dongeng_gelap",  "desc": "dongeng klasik dengan sisi gelap"},
+    {"id": "komedi_ironi",   "desc": "komedi ironi dengan punchline di akhir"}
+  ],
+
+  "structures": [
+    {"id": "cold_open",       "desc": "mulai dari momen paling mengejutkan, lalu mundur ke awal"},
+    {"id": "countdown",       "desc": "dihitung mundur, tiap bagian makin tegang"},
+    {"id": "tanya_jawab",     "desc": "mulai dengan satu pertanyaan, jawabannya di akhir"},
+    {"id": "cerita_terbalik", "desc": "diceritakan dari akhir ke awal"},
+    {"id": "tiga_babak",      "desc": "pengantar, eskalasi, kejutan"},
+    {"id": "lewat_catatan",   "desc": "diceritakan lewat surat, catatan, atau rekaman"}
+  ],
+
+  "visual_styles": [
+    {"id": "cat_air", "style_block": "watercolor illustration, soft paper grain, bleeding edges"},
+    {"id": "anime",   "style_block": "anime style illustration, cel shading, cinematic lighting"},
+    {"id": "3d_lembut", "style_block": "soft 3D render, clay-like materials, gentle studio lighting"},
+    {"id": "komik",   "style_block": "graphic novel ink illustration, bold linework, halftone shading"},
+    {"id": "siluet",  "style_block": "silhouette art, strong contrast, minimal detail, backlit"},
+    {"id": "retro",   "style_block": "retro 1970s poster illustration, grainy print texture"}
+  ],
+
+  "palettes": [
+    {"id": "biru_emas",    "colors": ["#0B1D3A", "#1F4E79", "#E8C547", "#F2EBD9"], "prompt": "deep navy blue and muted gold"},
+    {"id": "merah_arang",  "colors": ["#1A1A1A", "#4A4A4A", "#B22222", "#EDE0D4"], "prompt": "charcoal black and blood red"},
+    {"id": "hijau_kabut",  "colors": ["#14281D", "#2F5D50", "#A3B18A", "#DAD7CD"], "prompt": "misty forest green and pale sage"},
+    {"id": "ungu_senja",   "colors": ["#2B1B4B", "#6A4C93", "#F28482", "#F6BD60"], "prompt": "twilight purple and warm coral"},
+    {"id": "sepia_tua",    "colors": ["#3E2C1C", "#7F5539", "#B08968", "#EDE0D4"], "prompt": "aged sepia and warm brown"},
+    {"id": "monokrom_merah","colors": ["#000000", "#555555", "#EEEEEE", "#E63946"], "prompt": "black and white with a single red accent"},
+    {"id": "tosca_peach",  "colors": ["#1B4D4F", "#3AAFA9", "#FFB997", "#FFF4EC"], "prompt": "teal and soft peach"},
+    {"id": "kuning_hitam", "colors": ["#101010", "#2A2A2A", "#F4D35E", "#FAF0CA"], "prompt": "pale yellow against deep black"}
+  ],
+
+  "narrators": [
+    {"id": "id_male_deep_01",     "label": "Pria berat",     "speed": 0.95, "emotion": "tenang_misterius"},
+    {"id": "id_female_soft_01",   "label": "Wanita lembut",  "speed": 1.0,  "emotion": "hangat"},
+    {"id": "id_male_warm_02",     "label": "Pria hangat",    "speed": 1.0,  "emotion": "bercerita"},
+    {"id": "id_female_calm_02",   "label": "Wanita tenang",  "speed": 0.95, "emotion": "dingin_datar"},
+    {"id": "id_male_young_01",    "label": "Pria muda",      "speed": 1.08, "emotion": "antusias"},
+    {"id": "id_female_dramatic_01","label": "Wanita dramatis","speed": 1.0,  "emotion": "dramatis"}
+  ],
+
+  "music": [
+    {"id": "ambient_sedih",   "bpm": 70},
+    {"id": "piano_tegang",    "bpm": 90},
+    {"id": "drone_gelap",     "bpm": 60},
+    {"id": "gamelan_misteri", "bpm": 80},
+    {"id": "lofi_hangat",     "bpm": 85},
+    {"id": "string_dramatis", "bpm": 100}
+  ],
+
+  "subtitles": [
+    {"id": "lora_kata",   "font": "Lora Bold",       "position": "bawah_tengah", "animation": "kata_per_kata"},
+    {"id": "bebas_pop",   "font": "Bebas Neue",      "position": "tengah",       "animation": "pop_in"},
+    {"id": "mono_ketik",  "font": "Space Mono",      "position": "bawah_tengah", "animation": "mesin_ketik"},
+    {"id": "poppins_fade","font": "Poppins SemiBold","position": "bawah_kiri",   "animation": "fade_baris"},
+    {"id": "serif_besar", "font": "Playfair Display","position": "atas_tengah",  "animation": "kata_per_kata"}
+  ],
+
+  "pacing": ["tenang", "sedang", "cepat"],
+
+  "brand": {"logo": "pojok_kecil", "intro": "sting_1_detik", "mascot": null}
+}
