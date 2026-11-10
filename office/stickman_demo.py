@@ -40,10 +40,51 @@ def mix(a, b, p):
 
 def actor(
     draw, x, y, color, phase,
-    walking=0, listening=0, pointing=0,
+    walking=0, listening=0, pointing=0, walk_path=None,
 ):
     scale = 1.7
-    y += math.sin(phase * 2) * 2 * walking
+    spread = 78 * math.sin(math.radians(10)) * scale
+    ground = y + (97 + 78 * math.cos(math.radians(10))) * scale
+
+    feet = [
+        [x - spread, ground],
+        [x + spread, ground],
+    ]
+    cycle = 0.0
+
+    if walk_path is not None:
+        start, end = walk_path
+        progress = max(
+            0.0,
+            min(1.0, (x - start) / (end - start)),
+        )
+
+        cycle = progress * 4
+
+        feet = [
+            [start - spread, ground],
+            [start + spread, ground],
+        ]
+
+        stride = (end - start) / 2
+
+        for step in range(4):
+            leg_index = step % 2
+
+            feet[leg_index][0] += (
+                stride * ease(cycle, step, step + 1)
+            )
+
+            if step <= cycle < step + 1:
+                lift = math.sin(
+                    math.pi * (cycle - step)
+                ) ** 2
+
+                feet[leg_index][1] -= 12 * scale * lift
+
+        y += (
+            3 + 1.2 * math.sin(math.pi * cycle) ** 2
+        ) * scale * walking
 
     def point(px, py):
         return (x + px * scale, y + py * scale)
@@ -53,7 +94,10 @@ def actor(
         size = max(1, round(width * scale))
 
         draw.line(
-            coords, fill=fill, width=size, joint="curve"
+            coords,
+            fill=fill,
+            width=size,
+            joint="curve",
         )
 
         radius = size / 2
@@ -81,24 +125,34 @@ def actor(
 
         return points
 
-    swing = math.sin(phase) * 26 * walking
+    # Posisi lutut dihitung dari posisi pinggul dan telapak kaki.
+    # Panjang paha dan betis tetap sama selama animasi.
+    for world_x, world_y in feet:
+        fx = (world_x - x) / scale
+        fy = (world_y - y) / scale
 
-    for sign in (-1, 1):
-        leg = chain(
-            (0, 97),
-            (39, 39),
-            (
-                sign * (10 + swing),
-                sign * (10 - swing * 0.5),
-            ),
+        dx, dy = fx, fy - 97
+        distance = max(0.0001, math.hypot(dx, dy))
+
+        bend = math.sqrt(
+            max(0.0, 39 ** 2 - (distance / 2) ** 2)
         )
 
-        stroke(leg)
-        fx, fy = leg[-1]
-        stroke([(fx - 6, fy), (fx + 10, fy)], width=8)
+        knee = (
+            dx / 2 + dy / distance * bend,
+            97 + dy / 2 - dx / distance * bend,
+        )
+
+        stroke([(0, 97), knee, (fx, fy)])
+        stroke(
+            [(fx - 6, fy), (fx + 10, fy)],
+            width=8,
+        )
 
     stroke([(0, 27), (0, 97)], width=9)
     stroke([(0, 37), (0, 78)], fill=color, width=18)
+
+    swing = math.sin(math.pi * cycle) * 16 * walking
 
     left = chain(
         (0, 39),
@@ -188,7 +242,6 @@ def actor(
             width=4,
         )
 
-
 def frame(t):
     image = Image.new("RGB", (W, H), "#F7F4EA")
     draw = ImageDraw.Draw(image)
@@ -269,6 +322,7 @@ def frame(t):
     actor(
         draw, x, 490, BLUE, t * 9,
         walking, listening, pointing,
+        walk_path=(155, 330),
     )
 
     if t >= 4:
@@ -331,8 +385,8 @@ def main():
     folder = OUTPUT_DIR / "stickman-test"
     folder.mkdir(parents=True, exist_ok=True)
 
-    target = folder / "actor-demo.mp4"
-    temporary = folder / "actor-demo.part.mp4"
+    target = folder / "actor-demo-walk-v2.mp4"
+    temporary = folder / "actor-demo-walk-v2.part.mp4"
     log = folder / "render.log"
 
     command = [
