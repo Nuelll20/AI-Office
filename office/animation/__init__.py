@@ -1,0 +1,1 @@
+"""Komponen animasi bersama, terpisah dari data cerita."""
