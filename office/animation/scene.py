@@ -5,6 +5,7 @@ import math
 import re
 import subprocess
 import tempfile
+from .gestures import GESTURES, sample_gesture
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -49,13 +50,19 @@ def load_scene(path, bible):
     number(
         data["schema_version"],
         "scene.schema_version",
-        1, 1, integer=True,
+        1,
+        1,
+        integer=True,
     )
+
     text(data["video_id"], "scene.video_id")
+
     number(
         data["bible_revision"],
         "scene.bible_revision",
-        1, 1_000_000, integer=True,
+        1,
+        1_000_000,
+        integer=True,
     )
 
     require(
@@ -66,6 +73,7 @@ def load_scene(path, bible):
     )
 
     text(data["title"], "scene.title")
+
     require(
         len(data["title"]) <= 35,
         "scene.title",
@@ -73,6 +81,7 @@ def load_scene(path, bible):
     )
 
     text(data["location"], "scene.location")
+
     require(
         len(data["location"]) <= 40,
         "scene.location",
@@ -92,21 +101,20 @@ def load_scene(path, bible):
         bible["target"]["height"] * 0.72,
     )
 
+    # Validasi pengaturan waktu.
+    timing = data["timing"]
     timing_fields = "after_walk_sec gap_sec tail_sec"
 
-    if (
-        isinstance(data["timing"], dict)
-        and "max_pause_sec" in data["timing"]
-    ):
+    if isinstance(timing, dict) and "max_pause_sec" in timing:
         timing_fields += " max_pause_sec"
 
     object_fields(
-        data["timing"],
+        timing,
         "timing",
         timing_fields,
     )
 
-    for key, value in data["timing"].items():
+    for key, value in timing.items():
         number(
             value,
             "timing." + key,
@@ -114,23 +122,28 @@ def load_scene(path, bible):
             3,
         )
 
-    if "max_pause_sec" in data["timing"]:
+    if "max_pause_sec" in timing:
         number(
-            data["timing"]["max_pause_sec"],
+            timing["max_pause_sec"],
             "timing.max_pause_sec",
             0.15,
             1,
         )
 
+    # Validasi tokoh yang hadir dalam adegan.
     actors = data["actors"]
 
     require(
-        isinstance(actors, dict) and 1 <= len(actors) <= 4,
+        isinstance(actors, dict)
+        and 1 <= len(actors) <= 4,
         "actors",
-        "harus berisi 1–4 aktor",
+        "harus berisi 1 sampai 4 aktor",
     )
 
-    known = {item["id"] for item in bible["characters"]}
+    known = {
+        item["id"]
+        for item in bible["characters"]
+    }
 
     for identity, item in actors.items():
         require(
@@ -145,21 +158,36 @@ def load_scene(path, bible):
             "start_x end_x start_time end_time scale look_at",
         )
 
-        number(item["scale"], identity + ".scale", 0.5, 1.2)
+        number(
+            item["scale"],
+            identity + ".scale",
+            0.5,
+            1.2,
+        )
 
         for key in ("start_x", "end_x"):
             number(
                 item[key],
                 identity + "." + key,
                 150 * item["scale"],
-                bible["target"]["width"] - 150 * item["scale"],
+                bible["target"]["width"]
+                - 150 * item["scale"],
             )
 
         for key in ("start_time", "end_time"):
-            number(item[key], identity + "." + key, 0, 10)
+            number(
+                item[key],
+                identity + "." + key,
+                0,
+                10,
+            )
 
         if item["look_at"] is not None:
-            text(item["look_at"], identity + ".look_at")
+            text(
+                item["look_at"],
+                identity + ".look_at",
+            )
+
             require(
                 item["look_at"] in actors
                 and item["look_at"] != identity,
@@ -169,46 +197,86 @@ def load_scene(path, bible):
 
         plan_actor(item)
 
-    validate_props(data["props"], bible, set(actors))
+    validate_props(
+        data["props"],
+        bible,
+        set(actors),
+    )
+
+    # Variabel line hanya digunakan di dalam perulangan ini.
     seen = set()
 
     for index, line in entries(data["lines"], "lines", 1):
+        line_path = f"lines[{index}]"
+        fields = "id speaker text"
+
+        if isinstance(line, dict) and "gesture" in line:
+            fields += " gesture"
+
         object_fields(
             line,
-            f"lines[{index}]",
-            "id speaker text",
+            line_path,
+            fields,
         )
 
-        text(line["id"], "line.id", r"[a-z0-9][a-z0-9_-]*")
-        text(line["speaker"], "line.speaker")
-        text(line["text"], "line.text")
+        text(
+            line["id"],
+            line_path + ".id",
+            r"[a-z0-9][a-z0-9_-]*",
+        )
+
+        text(
+            line["speaker"],
+            line_path + ".speaker",
+        )
+
+        text(
+            line["text"],
+            line_path + ".text",
+        )
 
         require(
             len(line["text"]) <= 300,
-            "line.text",
+            line_path + ".text",
             "maksimal 300 karakter",
         )
+
         require(
             line["id"] not in seen,
-            "line.id",
+            line_path + ".id",
             "ID duplikat",
         )
+
         seen.add(line["id"])
 
         require(
             line["speaker"] in actors,
-            "line.speaker",
+            line_path + ".speaker",
             "pembicara tidak hadir",
         )
+
+        if "gesture" in line:
+            text(
+                line["gesture"],
+                line_path + ".gesture",
+            )
+
+            require(
+                line["gesture"] in GESTURES,
+                line_path + ".gesture",
+                "jenis gestur tidak dikenal",
+            )
 
         for word in bible["constraints"]["forbidden_words"]:
             require(
                 re.search(
-                    r"(?<!\w)" + re.escape(word) + r"(?!\w)",
+                    r"(?<!\w)"
+                    + re.escape(word)
+                    + r"(?!\w)",
                     line["text"],
                     re.I,
                 ) is None,
-                "line.text",
+                line_path + ".text",
                 "memuat kata terlarang",
             )
 
@@ -392,23 +460,57 @@ def frame(bible, scene, seconds):
         for identity, item in scene["actors"].items()
     }
 
+    carrying = {
+        item["owner"]
+        for item in scene["props"]
+        if item["owner"] is not None
+    }
+
     anchors = {}
 
-    for order, (identity, item) in enumerate(scene["actors"].items()):
+    for order, (identity, item) in enumerate(
+        scene["actors"].items()
+    ):
         plan = plans[identity]
         pose = plan.sample(seconds)
         facing = None
 
-        if not pose.activity and item["look_at"] is not None:
-            other_x = plans[item["look_at"]].sample(seconds).hip[0]
-            facing = 1 if other_x >= pose.hip[0] else -1
+        if (
+            not pose.activity
+            and item["look_at"] is not None
+        ):
+            other_x = plans[
+                item["look_at"]
+            ].sample(seconds).hip[0]
+
+            facing = (
+                1
+                if other_x >= pose.hip[0]
+                else -1
+            )
 
         level = 0.0
 
         if active and active["speaker"] == identity:
             offset = index - active["start_frame"]
-            recent = active["levels"][max(0, offset-2):offset+1]
+
+            recent = active["levels"][
+                max(0, offset - 2):offset + 1
+            ]
+
             level = sum(recent) / len(recent)
+
+        gesture_line = (
+            active
+            if active and active["speaker"] == identity
+            else None
+        )
+
+        kind, weight, phase = sample_gesture(
+            gesture_line,
+            index,
+            bible["target"]["fps"],
+        )
 
         anchors[identity] = draw_walker(
             image,
@@ -418,9 +520,15 @@ def frame(bible, scene, seconds):
             seconds,
             scene["ground_y"],
             mouth=level,
-            gesture=0.3 * level,
+            gesture=weight,
             facing=facing,
-            blink=(seconds + order * 0.7) % 3.5 < 0.1,
+            blink=(
+                (seconds + order * 0.7) % 3.5
+                < 0.1
+            ),
+            gesture_kind=kind,
+            gesture_phase=phase,
+            carrying=identity in carrying,
         )
 
     draw_scene_props(image, scene["props"], bible, anchors)

@@ -1,14 +1,29 @@
-"""Renderer berjalan dengan profil, bayangan, dan jangkar genggaman."""
+"""Renderer profil dengan langkah, tangan bebas, dan gestur percakapan."""
+
 import math
+from dataclasses import replace
 
 from PIL import ImageDraw
 
+from .gestures import GESTURES, gesture_angles
 from .walk_details import draw_profile_head, draw_contact_shadows
-from dataclasses import replace
+
 
 def draw_walker(
-    image, character, visual, plan, seconds, ground_y, *,
-    mouth=0, gesture=0, facing=None, blink=False,
+    image,
+    character,
+    visual,
+    plan,
+    seconds,
+    ground_y,
+    *,
+    mouth=0,
+    gesture=0,
+    facing=None,
+    blink=False,
+    gesture_kind="explain",
+    gesture_phase=0.5,
+    carrying=False,
 ):
     pose = plan.sample(seconds)
     scale = plan.leg_length / 66.3
@@ -29,17 +44,22 @@ def draw_walker(
             pose = replace(
                 pose,
                 knees=tuple(
-                    (2*center-x, y)
+                    (2 * center - x, y)
                     for x, y in pose.knees
                 ),
                 feet=tuple(
-                    (2*center-x, y)
+                    (2 * center - x, y)
                     for x, y in pose.feet
                 ),
             )
+
             direction = facing
 
-    for name, value in (("mouth", mouth), ("gesture", gesture)):
+    for name, value in (
+        ("mouth", mouth),
+        ("gesture", gesture),
+        ("gesture_phase", gesture_phase),
+    ):
         if (
             type(value) not in (int, float)
             or not math.isfinite(value)
@@ -49,36 +69,63 @@ def draw_walker(
                 f"{name} harus berupa angka 0 sampai 1."
             )
 
-    if type(blink) is not bool:
-        raise ValueError("blink harus boolean.")
+    if type(blink) is not bool or type(carrying) is not bool:
+        raise ValueError(
+            "blink dan carrying harus boolean."
+        )
 
-    ink = visual["palette"]["ink"]
-    paper = visual["palette"]["paper"]
+    if (
+        not isinstance(gesture_kind, str)
+        or gesture_kind not in GESTURES
+    ):
+        raise ValueError("Jenis gestur tidak dikenal.")
+
+    palette = visual["palette"]
+    ink = palette["ink"]
+    paper = palette["paper"]
     color = character["color"]
 
-    draw_contact_shadows(image, pose, ground_y, scale)
+    far_ink = tuple(
+        round(
+            int(ink[i:i + 2], 16) * 0.78
+            + int(paper[i:i + 2], 16) * 0.22
+        )
+        for i in (1, 3, 5)
+    )
+
+    draw_contact_shadows(
+        image,
+        pose,
+        ground_y,
+        scale,
+    )
+
     draw = ImageDraw.Draw(image)
     origin_y = ground_y - 6.5 * scale
 
     def world(point):
         return point[0], origin_y + point[1]
 
-    far_ink = tuple(
-        round(
-            int(ink[i:i+2], 16) * 0.78
-            + int(paper[i:i+2], 16) * 0.22
-        )
-        for i in (1, 3, 5)
-    )
-
     def stroke(points, width=12, fill=ink):
         size = max(1, round(width * scale))
-        draw.line(points, fill=fill, width=size, joint="curve")
+
+        draw.line(
+            points,
+            fill=fill,
+            width=size,
+            joint="curve",
+        )
+
         radius = size / 2
 
         for x, y in points:
             draw.ellipse(
-                (x-radius, y-radius, x+radius, y+radius),
+                (
+                    x - radius,
+                    y - radius,
+                    x + radius,
+                    y + radius,
+                ),
                 fill=fill,
             )
 
@@ -97,13 +144,19 @@ def draw_walker(
         )
 
         x, y = world(pose.feet[index])
-        angle = math.radians(pose.foot_angles[index])
+        angle = math.radians(
+            pose.foot_angles[index]
+        )
 
         stroke(
             [
                 (
-                    x + direction * offset * scale * math.cos(angle),
-                    y + offset * scale * math.sin(angle),
+                    x
+                    + direction * offset * scale
+                    * math.cos(angle),
+                    y
+                    + offset * scale
+                    * math.sin(angle),
                 )
                 for offset in (-10, 17)
             ],
@@ -111,13 +164,32 @@ def draw_walker(
             fill=tint,
         )
 
-    lean = math.radians(4) * pose.activity
-    co, si = math.cos(lean), math.sin(lean)
+    # Gerakan tubuh kecil saat diam.
+    # Pijakan kaki tetap berada di tempatnya.
+    breath = (
+        0.6
+        * math.sin(2 * math.pi * seconds / 3.2)
+        * (1 - pose.activity)
+    )
 
-    head_x = pose.hip[0] + direction * 164.9 * scale * si
-    head_y = origin_y + pose.hip[1] - 164.9 * scale * co
+    lean = math.radians(
+        4 * pose.activity + breath
+    )
 
-    # Kompresi tubuh ringan ketika menerima beban langkah.
+    co = math.cos(lean)
+    si = math.sin(lean)
+
+    head_x = (
+        pose.hip[0]
+        + direction * 164.9 * scale * si
+    )
+
+    head_y = (
+        origin_y
+        + pose.hip[1]
+        - 164.9 * scale * co
+    )
+
     head_y += (
         2 * scale * pose.activity
         * math.cos(math.pi * pose.phase) ** 2
@@ -125,36 +197,63 @@ def draw_walker(
 
     def local(x, y):
         return (
-            head_x + direction * (x*co - y*si) * scale,
-            head_y + (x*si + y*co) * scale,
+            head_x
+            + direction * (x * co - y * si) * scale,
+            head_y
+            + (x * si + y * co) * scale,
         )
 
-    stroke([local(0, 45.9), world(pose.hip)], width=15)
-    stroke(
-        [local(0, 62.9), local(0, 132.6)],
-        width=30,
-        fill=color,
+    # Tangan depan memegang benda.
+    # Jika membawa benda, gestur memakai tangan satunya.
+    gesture_index = 0 if carrying else 1
+
+    amount = (
+        gesture * (1 - pose.activity)
+        if gesture_kind != "none"
+        else 0
     )
 
-    swing = 24 * math.cos(math.pi * pose.phase)
+    target = gesture_angles(
+        gesture_kind,
+        gesture_phase,
+    )
+
+    swing = 24 * math.cos(
+        math.pi * pose.phase
+    )
+
+    arms = []
     hands = []
     hand_angles = []
 
-    for index, (rest, sign) in enumerate(((-20, 1), (20, -1))):
+    for index, (rest, sign) in enumerate(
+        ((-10, 1), (12, -1))
+    ):
         upper = (
-            rest * (1-pose.activity)
+            rest * (1 - pose.activity)
             + sign * swing * pose.activity
         )
-        upper += 18 * gesture if index == 1 else 0
 
         angles = (
             upper,
-            upper + 12 * pose.activity
-            + (24 * gesture if index == 1 else 0),
+            upper + 12 * pose.activity,
         )
+
+        if index == gesture_index:
+            angles = tuple(
+                current + (goal - current) * amount
+                for current, goal in zip(
+                    angles,
+                    target,
+                )
+            )
+
         points = [(0, 66.3)]
 
-        for length, degrees in zip((66.3, 73.1), angles):
+        for length, degrees in zip(
+            (66.3, 73.1),
+            angles,
+        ):
             angle = math.radians(degrees)
             x, y = points[-1]
 
@@ -163,20 +262,69 @@ def draw_walker(
                 y + length * math.cos(angle),
             ))
 
+        points = [
+            local(*point)
+            for point in points
+        ]
+
+        arms.append(points)
+        hands.append(points[-1])
+        hand_angles.append(
+            angles[1] - rest
+        )
+
+    def draw_arm(index):
         stroke(
-            [local(*point) for point in points],
+            arms[index],
             fill=far_ink if index == 0 else ink,
         )
 
-        x, y = local(*points[-1])
-        hands.append((x, y))
-        hand_angles.append(angles[1] - rest)
-
+        x, y = hands[index]
         radius = 7 * scale
+
         draw.ellipse(
-            (x-radius, y-radius, x+radius, y+radius),
+            (
+                x - radius,
+                y - radius,
+                x + radius,
+                y + radius,
+            ),
             fill=color,
         )
+
+        if (
+            index == gesture_index
+            and gesture_kind == "point"
+            and amount > 0
+        ):
+            stroke(
+                [
+                    (x, y),
+                    (
+                        x
+                        + direction * 14 * scale * amount,
+                        y,
+                    ),
+                ],
+                width=4,
+                fill=color,
+            )
+
+    # Susunan gambar menjaga lengan belakang berada di belakang badan.
+    draw_arm(0)
+
+    stroke(
+        [local(0, 45.9), world(pose.hip)],
+        width=15,
+    )
+
+    stroke(
+        [local(0, 62.9), local(0, 132.6)],
+        width=30,
+        fill=color,
+    )
+
+    draw_arm(1)
 
     draw_profile_head(
         image,
@@ -193,6 +341,7 @@ def draw_walker(
     return {
         "hand": hands[1],
         "hand_angle": hand_angles[1],
+        "free_hand": hands[gesture_index],
         "head": (head_x, head_y),
         "hip": world(pose.hip),
         "scale": scale,

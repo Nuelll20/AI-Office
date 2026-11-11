@@ -97,7 +97,7 @@ class WalkPlan:
         phase = progress * steps
         completed = min(math.floor(phase), steps)
         fraction = phase - completed
-        spread = self.leg_length * 0.35
+        spread = self.leg_length * 0.10
 
         feet = [
             [self.start_x - spread, 0.0],
