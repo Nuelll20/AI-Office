@@ -72,7 +72,8 @@ def frame(bible, timeline, seconds):
     return image
 
 
-def render_preview(bible, timeline, output):
+def render_preview(bible, timeline, output, *, frame_renderer=None):
+    render_frame = frame if frame_renderer is None else frame_renderer
     if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
         raise ValueError("FFmpeg dan FFprobe harus tersedia di PATH.")
 
@@ -127,14 +128,24 @@ def render_preview(bible, timeline, output):
 
             try:
                 for index in range(frames):
-                    process.stdin.write(
-                        frame(
-                            bible,
-                            timeline,
-                            index / fps,
-                        ).tobytes()
+                    current = render_frame(
+                        bible,
+                        timeline,
+                        index / fps,
                     )
 
+                    if (
+                        current.mode != "RGB"
+                        or current.size != (width, height)
+                    ):
+                        raise ValueError(
+                            f"Frame {index} harus RGB "
+                            f"berukuran {width}x{height}."
+                        )
+
+                    process.stdin.write(current.tobytes())
+
+                # Di luar loop: tutup setelah semua frame terkirim.
                 process.stdin.close()
 
                 if process.wait(timeout=120):
@@ -142,12 +153,24 @@ def render_preview(bible, timeline, output):
                         f"FFmpeg gagal. Periksa {log}."
                     )
 
+            except BrokenPipeError as exc:
+                raise ValueError(
+                    "FFmpeg berhenti menerima frame. "
+                    f"Periksa {log}."
+                ) from exc
+
             finally:
                 if process.poll() is None:
                     process.kill()
 
                 process.wait()
-                process.stdin.close()
+
+                if not process.stdin.closed:
+                    try:
+                        process.stdin.close()
+                    except OSError:
+                        # Pertahankan pesan error awal.
+                        pass
 
         result = subprocess.run(
             [
