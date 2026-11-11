@@ -3,6 +3,8 @@ import math
 
 from PIL import Image, ImageDraw, ImageOps
 
+SS = 3  # faktor supersampling untuk antialiasing
+
 
 def _bounded(value, low, high, name):
     if type(value) not in (int, float) or not math.isfinite(value):
@@ -10,7 +12,38 @@ def _bounded(value, low, high, name):
     return max(low, min(high, value))
 
 
-def _face(draw, color, palette, gaze, mouth):
+class _Scaled:
+    """Bungkus ImageDraw: koordinat dan lebar garis dikali SS."""
+
+    def __init__(self, draw, k):
+        self._d, self._k = draw, k
+
+    def _s(self, v):
+        k = self._k
+        return [
+            tuple(c * k for c in p) if isinstance(p, (tuple, list)) else p * k
+            for p in v
+        ]
+
+    def _w(self, kw):
+        if "width" in kw:
+            kw = {**kw, "width": max(1, round(kw["width"] * self._k))}
+        return kw
+
+    def ellipse(self, xy, **kw):
+        self._d.ellipse(self._s(xy), **self._w(kw))
+
+    def arc(self, xy, a, b, **kw):
+        self._d.arc(self._s(xy), a, b, **self._w(kw))
+
+    def line(self, xy, **kw):
+        self._d.line(self._s(xy), **self._w(kw))
+
+    def polygon(self, xy, **kw):
+        self._d.polygon(self._s(xy), **kw)
+
+
+def _face(draw, color, palette, gaze, mouth, blink=False):
     cx, cy, radius = 150, 60, 23 * 1.7
     ink = palette["ink"]
 
@@ -27,9 +60,15 @@ def _face(draw, color, palette, gaze, mouth):
     eye_y = cy - 8
 
     for eye_x in (face_x - 10, face_x + 10):
-        draw.ellipse(
-            (eye_x-4, eye_y-4, eye_x+4, eye_y+4), fill=ink,
-        )
+        if blink:
+            draw.line(
+                [(eye_x - 4, eye_y), (eye_x + 4, eye_y)],
+                fill=ink, width=2,
+            )
+        else:
+            draw.ellipse(
+                (eye_x-4, eye_y-4, eye_x+4, eye_y+4), fill=ink,
+            )
 
     draw.line(
         [(face_x+1, cy-1), (face_x+3, cy+6), (face_x-1, cy+6)],
@@ -52,11 +91,14 @@ def _face(draw, color, palette, gaze, mouth):
 
 
 def character_layer(character, visual, *, gaze=1, mouth=0,
-                    listening=0, pointing=0, mirror=False):
+                    listening=0, pointing=0, mirror=False, blink=False):
     """RGBA 301x420; pusat kepala (150, 60). Pose belum memiliki timeline."""
     if (visual["style"] != "stickman_2d"
             or visual["face"] != "two_eyes_nose_curved_mouth"):
         raise ValueError("Gaya atau wajah belum didukung renderer ini.")
+
+    if type(blink) is not bool:
+        raise ValueError("blink harus berupa boolean.")
 
     if type(mirror) is not bool:
         raise ValueError("mirror harus berupa boolean.")
@@ -70,8 +112,8 @@ def character_layer(character, visual, *, gaze=1, mouth=0,
     palette = visual["palette"]
     ink = palette["ink"]
 
-    layer = Image.new("RGBA", (301, 420))
-    draw = ImageDraw.Draw(layer)
+    big = Image.new("RGBA", (301 * SS, 420 * SS))
+    draw = _Scaled(ImageDraw.Draw(big), SS)
     x, y, scale = 150, 60, 1.7
 
     def point(px, py):
@@ -103,14 +145,16 @@ def character_layer(character, visual, *, gaze=1, mouth=0,
 
         return points
 
-    spread = 78 * math.sin(math.radians(10)) * scale
-    ground = y + (97 + 78 * math.cos(math.radians(10))) * scale
+    reach = 76
+    spread = reach * math.sin(math.radians(10)) * scale
+    ground = y + (97 + reach * math.cos(math.radians(10))) * scale
 
     for world_x in (x - spread, x + spread):
+        side = 1 if world_x > x else -1
         fx, fy = (world_x - x) / scale, (ground - y) / scale
         dx, dy = fx, fy - 97
         distance = max(0.0001, math.hypot(dx, dy))
-        bend = math.sqrt(max(0.0, 39 ** 2 - (distance / 2) ** 2))
+        bend = math.sqrt(max(0.0, 39 ** 2 - (distance / 2) ** 2)) * side
 
         knee = (
             dx / 2 + dy / distance * bend,
@@ -140,8 +184,9 @@ def character_layer(character, visual, *, gaze=1, mouth=0,
         hx, hy = point(*hand)
         draw.ellipse((hx-7, hy-7, hx+7, hy+7), fill=color)
 
-    _face(draw, color, palette, gaze, mouth)
+    _face(draw, color, palette, gaze, mouth, blink)
 
+    layer = big.resize((301, 420), Image.Resampling.LANCZOS)
     return ImageOps.mirror(layer) if mirror else layer
 
 
