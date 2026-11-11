@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "video_id": "animation-contract-demo",
+  "bible_revision": 5,
+  "duration_sec": 8,
+  "walks": [
+    {
+      "character_id": "dimas",
+      "start_x": 180,
+      "end_x": 500,
+      "start_time": 1,
+      "end_time": 7,
+      "ground_y": 560,
+      "scale": 1
+    },
+    {
+      "character_id": "raka",
+      "start_x": 540,
+      "end_x": 220,
+      "start_time": 1,
+      "end_time": 7,
+      "ground_y": 1080,
+      "scale": 1
+    }
+  ],
+  "props": [
+    {
+      "id": "radio-1",
+      "owner": "dimas",
+      "offset_x": 0,
+      "offset_y": 0
+    },
+    {
+      "id": "book-1",
+      "owner": "raka",
+      "offset_x": 0,
+      "offset_y": 0
+    }
+  ]
+}

@@ -1,0 +1,97 @@
+{
+  "schema_version": 2,
+  "revision": 2,
+  "video_id": "animation-contract-demo",
+  "idea": "Dua tokoh menyelidiki sumber pesan yang bertentangan dengan kejadian di depan mereka.",
+  "target": {
+    "width": 720,
+    "height": 1280,
+    "fps": 30,
+    "duration_sec": 45,
+    "language": "id"
+  },
+  "visual": {
+    "style": "stickman_2d",
+    "face": "two_eyes_nose_curved_mouth",
+    "palette": {
+      "ink": "#17364A",
+      "paper": "#F7F4EA",
+      "head_fill": "#FFFDF5"
+    }
+  },
+  "characters": [
+    {
+      "id": "dimas",
+      "name": "Dimas",
+      "description": "Stickman dengan badan biru; identitasnya tetap di semua adegan.",
+      "color": "#287FD0",
+      "voice": {
+        "provider": "edge_tts",
+        "id": "id-ID-ArdiNeural",
+        "rate": "-5%",
+        "pitch": "+0Hz"
+      }
+    },
+    {
+      "id": "raka",
+      "name": "Raka",
+      "description": "Stickman dengan badan oranye; identitasnya tetap di semua adegan.",
+      "color": "#F28C38",
+      "voice": {
+        "provider": "edge_tts",
+        "id": "id-ID-ArdiNeural",
+        "rate": "+3%",
+        "pitch": "+14Hz"
+      }
+    }
+  ],
+  "props": [
+    {
+      "id": "radio-1",
+      "name": "Radio genggam",
+      "description": "Radio gelap dengan antena dan layar tosca. Pemegangnya ditentukan oleh data adegan.",
+      "appearance": {
+        "asset": "radio",
+        "size": 42,
+        "accent": "#73E8E0"
+      }
+    },
+    {
+      "id": "parcel-1",
+      "name": "Paket",
+      "description": "Kotak cokelat dengan pita krem.",
+      "appearance": {
+        "asset": "parcel",
+        "size": 64,
+        "accent": "#B98559"
+      }
+    },
+    {
+      "id": "book-1",
+      "name": "Buku",
+      "description": "Buku bersampul biru.",
+      "appearance": {
+        "asset": "book",
+        "size": 50,
+        "accent": "#287FD0"
+      }
+    }
+  ],
+  "narration": {
+    "tone": "Misterius tetapi jelas; hubungan sebab-akibat dan penyelesaian harus dapat dipahami.",
+    "words_per_second": 2.5,
+    "voice": {
+      "provider": "edge_tts",
+      "id": "id-ID-ArdiNeural",
+      "rate": "-5%",
+      "pitch": "+0Hz"
+    }
+  },
+  "constraints": {
+    "forbidden_words": [],
+    "forbidden_visuals": [
+      "panel komik atau grid pembagi adegan",
+      "perubahan warna identitas karakter tanpa alasan cerita"
+    ]
+  }
+}

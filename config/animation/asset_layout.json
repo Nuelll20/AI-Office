@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "assets": {
+    "radio": {
+      "grip": [
+        50,
+        50
+      ],
+      "rotation_follow": 0.25
+    },
+    "parcel": {
+      "grip": [
+        50,
+        50
+      ],
+      "rotation_follow": 0.25
+    },
+    "book": {
+      "grip": [
+        50,
+        50
+      ],
+      "rotation_follow": 0.25
+    },
+    "phone": {
+      "grip": [
+        50,
+        50
+      ],
+      "rotation_follow": 0.25
+    },
+    "radio_v2": {
+      "grip": [
+        50,
+        50
+      ],
+      "rotation_follow": 0.25
+    },
+    "parcel_v2": {
+      "grip": [
+        50,
+        50
+      ],
+      "rotation_follow": 0.25
+    },
+    "book_open_v1": {
+      "grip": [
+        50,
+        50
+      ],
+      "rotation_follow": 0.25
+    },
+    "book_closed_sea_v1": {
+      "grip": [
+        28,
+        35
+      ],
+      "rotation_follow": 0.25
+    },
+    "radio_handle_v1": {
+      "grip": [
+        4,
+        51
+      ],
+      "rotation_follow": 0.25
+    }
+  }
+}

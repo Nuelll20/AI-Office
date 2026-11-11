@@ -19,6 +19,9 @@ class WalkPose:
     knees: tuple
     feet: tuple
     planted: tuple
+    phase: float = 0.0
+    activity: float = 0.0
+    foot_angles: tuple = (0.0, 0.0)
 
 
 @dataclass(frozen=True)
@@ -31,11 +34,8 @@ class WalkPlan:
 
     def __post_init__(self):
         for name in (
-            "start_x",
-            "end_x",
-            "start_time",
-            "end_time",
-            "leg_length",
+            "start_x", "end_x",
+            "start_time", "end_time", "leg_length",
         ):
             _finite(getattr(self, name), name)
 
@@ -65,38 +65,49 @@ class WalkPlan:
     def sample(self, seconds):
         _finite(seconds, "seconds")
 
-        progress = _smooth(
-            (seconds - self.start_time)
-            / (self.end_time - self.start_time)
+        duration = self.end_time - self.start_time
+        t = max(
+            0.0,
+            min(1.0, (seconds - self.start_time) / duration),
         )
+        ramp = min(0.15, 0.45 / duration)
+
+        # Akselerasi singkat; bagian tengah memiliki kecepatan stabil.
+        def acceleration(value):
+            u = value / ramp
+            return (
+                ramp * (u ** 3 - 0.5 * u ** 4)
+                / (1 - ramp)
+            )
+
+        if t < ramp:
+            progress = acceleration(t)
+            activity = _smooth(t / ramp)
+        elif t > 1 - ramp:
+            progress = 1 - acceleration(1 - t)
+            activity = _smooth((1 - t) / ramp)
+        else:
+            progress = (t - ramp / 2) / (1 - ramp)
+            activity = 1.0
 
         distance = self.end_x - self.start_x
         direction = 1 if distance >= 0 else -1
-
         steps = self.step_count
+
         phase = progress * steps
         completed = min(math.floor(phase), steps)
         fraction = phase - completed
-
         spread = self.leg_length * 0.35
-
-        # Sedikit tekukan lutut memberi ruang saat mulai dan berhenti.
-        height = (
-            math.sqrt((2 * self.leg_length) ** 2 - spread ** 2)
-            - self.leg_length * 0.04
-        )
 
         feet = [
             [self.start_x - spread, 0.0],
             [self.start_x + spread, 0.0],
         ]
-
         planted = [True, True]
-        drop = 0.0
+        foot_angles = [0.0, 0.0]
 
         if steps:
             stride = distance / (steps // 2)
-
             first = 0 if direction == 1 else 1
             other = 1 - first
 
@@ -109,21 +120,48 @@ class WalkPlan:
                 feet[swing][0] += stride * _smooth(fraction)
 
                 feet[swing][1] = (
-                    -self.leg_length * 0.25
+                    -self.leg_length * 0.12
+                    * math.sin(math.pi * fraction) ** 2
+                )
+
+                foot_angles[swing] = (
+                    -18
+                    * math.sin(2 * math.pi * fraction)
                     * math.sin(math.pi * fraction) ** 2
                 )
 
                 planted[swing] = False
+        else:
+            activity = 0.0
 
-            drop = self.leg_length * 0.12 * _smooth(
-                min(phase, steps - phase)
+        hip_x = self.start_x + distance * progress
+
+        # Tinggi pinggul mengikuti jangkauan kaki.
+        # Kaki tumpuan hampir lurus, dengan sedikit kelenturan.
+        reach_limit = self.leg_length * 1.99
+
+        heights = [
+            math.sqrt(
+                max(
+                    0.0,
+                    reach_limit ** 2 - (foot[0] - hip_x) ** 2,
+                )
+            ) - foot[1]
+            for foot in feet
+        ]
+
+        lowest = min(heights)
+        softness = self.leg_length * 0.01
+
+        # Peralihan tinggi yang halus ketika berganti kaki tumpuan.
+        height = lowest - softness * math.log(
+            sum(
+                math.exp((lowest - value) / softness)
+                for value in heights
             )
-
-        hip = (
-            self.start_x + distance * progress,
-            -height + drop,
         )
 
+        hip = (hip_x, -height)
         knees = []
 
         for foot in feet:
@@ -153,4 +191,7 @@ class WalkPlan:
             knees=tuple(knees),
             feet=tuple(tuple(foot) for foot in feet),
             planted=tuple(planted),
+            phase=phase,
+            activity=activity,
+            foot_angles=tuple(foot_angles),
         )

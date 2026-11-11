@@ -20,6 +20,7 @@ from .motion_preview import render_preview
 from .preview import font
 from .walking import WalkPlan
 from .walk_renderer import draw_walker
+from .props import validate_props, draw_scene_props
 
 
 def make_plan(item):
@@ -39,11 +40,12 @@ def load_walk_scene(path, bible):
         parse_constant=invalid_constant,
     )
 
-    object_fields(
-        data,
-        "walk_scene",
-        "schema_version video_id bible_revision duration_sec walks",
-    )
+    fields = "schema_version video_id bible_revision duration_sec walks"
+
+    if "props" in data:
+        fields += " props"
+
+    object_fields(data, "walk_scene", fields)
 
     number(data["schema_version"], "schema_version", 1, 1, integer=True)
     number(
@@ -112,8 +114,8 @@ def load_walk_scene(path, bible):
             bible["target"]["height"] - 60,
         )
 
-        make_plan(item)
-
+    make_plan(item)
+    validate_props(data.get("props", []), bible, seen)
     return data
 
 
@@ -149,6 +151,7 @@ def frame(bible, scene, seconds):
         for item in bible["characters"]
     }
 
+    anchors = {}
     for item in scene["walks"]:
         character = characters[item["character_id"]]
         plan = make_plan(item)
@@ -160,7 +163,7 @@ def frame(bible, scene, seconds):
             width=2,
         )
 
-        draw_walker(
+        anchors[item["character_id"]] = draw_walker(
             image,
             character,
             visual,
@@ -180,6 +183,12 @@ def frame(bible, scene, seconds):
             fill=ink,
         )
 
+    draw_scene_props(
+        image,
+        scene.get("props", []),
+        bible,
+        anchors,
+    )
     return image
 
 

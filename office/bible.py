@@ -59,11 +59,36 @@ def voice(value, path):
             path + ".rate", "harus lebih dari -100% dan maksimal +100%")
 
 
+def validate_prop_style(value, path):
+    require(isinstance(value, dict), path, "harus objek")
+
+    fields = "asset size accent"
+    if "label" in value:
+        fields += " label"
+
+    object_fields(value, path, fields)
+
+    text(
+        value["asset"],
+        path + ".asset",
+        r"[a-z0-9][a-z0-9_-]*",
+    )
+    number(value["size"], path + ".size", 4, 300)
+    text(value["accent"], path + ".accent", r"#[0-9A-Fa-f]{6}")
+
+    if "label" in value:
+        text(value["label"], path + ".label")
+        require(
+            len(value["label"]) <= 40,
+            path + ".label",
+            "maksimal 40 karakter",
+        )
+
 def validate_bible(data):
     object_fields(data, "bible",
                   "schema_version revision video_id idea target visual "
                   "characters props narration constraints")
-    number(data["schema_version"], "schema_version", 1, 1, integer=True)
+    number(data["schema_version"], "schema_version", 1, 3, integer=True)
     number(data["revision"], "revision", 1, 1_000_000, integer=True)
     text(data["video_id"], "video_id", r"[a-z0-9][a-z0-9_-]*")
     text(data["idea"], "idea")
@@ -89,23 +114,64 @@ def validate_bible(data):
         text(value, "visual.palette." + key, r"#[0-9A-Fa-f]{6}")
 
     identifiers = set()
+
     for group in ("characters", "props"):
         minimum = 1 if group == "characters" else 0
+
         for index, item in entries(data[group], group, minimum):
             path = f"{group}[{index}]"
             fields = "id name description"
+
             if group == "characters":
                 fields += " color voice"
-            object_fields(item, path, fields)
-            text(item["id"], path + ".id", r"[a-z0-9][a-z0-9_-]*")
-            require(item["id"] not in identifiers, path + ".id",
-                    f"ID duplikat: {item['id']}")
-            identifiers.add(item["id"])
-            text(item["name"], path + ".name")
-            text(item["description"], path + ".description")
-            if group == "characters":
-                text(item["color"], path + ".color", r"#[0-9A-Fa-f]{6}")
-                voice(item["voice"], path + ".voice")
+            elif data["schema_version"] >= 2:
+                appearance = item["appearance"]
+
+                if data["schema_version"] == 3:
+                    object_fields(
+                        appearance,
+                        path + ".appearance",
+                        "asset size accent views",
+                    )
+
+                    views = appearance["views"]
+
+                    require(
+                        isinstance(views, dict),
+                        path + ".appearance.views",
+                        "harus objek",
+                    )
+
+                    for key, value in views.items():
+                        text(
+                            key,
+                            path + ".view_id",
+                            r"[a-z0-9][a-z0-9_-]*",
+                        )
+                        validate_prop_style(
+                            value,
+                            path + ".views." + key,
+                        )
+
+                    validate_prop_style(
+                        {
+                            key: value
+                            for key, value in appearance.items()
+                            if key != "views"
+                        },
+                        path + ".appearance",
+                    )
+
+                else:
+                    object_fields(
+                        appearance,
+                        path + ".appearance",
+                        "asset size accent",
+                    )
+                    validate_prop_style(
+                        appearance,
+                        path + ".appearance",
+                    )
 
     narration = data["narration"]
     object_fields(narration, "narration", "tone words_per_second voice")
