@@ -19,6 +19,7 @@ from .props import draw_scene_props, validate_props
 from .scene_audio import RATE, mouth_levels, speech, write_pcm
 from .walking import WalkPlan
 from .walk_renderer import draw_walker
+from .audio_quality import prepare_dialogue
 
 
 def plan_actor(item):
@@ -91,14 +92,35 @@ def load_scene(path, bible):
         bible["target"]["height"] * 0.72,
     )
 
+    timing_fields = "after_walk_sec gap_sec tail_sec"
+
+    if (
+        isinstance(data["timing"], dict)
+        and "max_pause_sec" in data["timing"]
+    ):
+        timing_fields += " max_pause_sec"
+
     object_fields(
         data["timing"],
         "timing",
-        "after_walk_sec gap_sec tail_sec",
+        timing_fields,
     )
 
     for key, value in data["timing"].items():
-        number(value, "timing." + key, 0, 3)
+        number(
+            value,
+            "timing." + key,
+            0,
+            3,
+        )
+
+    if "max_pause_sec" in data["timing"]:
+        number(
+            data["timing"]["max_pause_sec"],
+            "timing.max_pause_sec",
+            0.15,
+            1,
+        )
 
     actors = data["actors"]
 
@@ -193,7 +215,13 @@ def load_scene(path, bible):
     return data
 
 
-def compile_scene(bible, data, folder, tone=False, report=print):
+def compile_scene(
+    bible,
+    data,
+    folder,
+    tone=False,
+    report=print,
+):
     fps = bible["target"]["fps"]
     samples_per_frame = RATE // fps
 
@@ -202,59 +230,99 @@ def compile_scene(bible, data, folder, tone=False, report=print):
         for item in bible["characters"]
     }
 
+    # Dialog dimulai setelah semua tokoh selesai berjalan.
+    end_walk = max(
+        item["end_time"]
+        for item in data["actors"].values()
+    )
+
     cursor = math.ceil(
         (
-            max(
-                item["end_time"]
-                for item in data["actors"].values()
-            )
+            end_walk
             + data["timing"]["after_walk_sec"]
         ) * fps
     )
 
-    lines, clips = [], []
+    lines = []
+    clips = []
 
     for line in data["lines"]:
         mode = "nada uji" if tone else "Edge TTS"
-        report(f"Membuat suara kalimat {line['id']} ({mode})...")
 
+        report(
+            f"Membuat suara kalimat "
+            f"{line['id']} ({mode})..."
+        )
+
+        voice = voices[line["speaker"]]
+
+        # Ambil suara dari TTS atau cache.
         pcm = speech(
             line["text"],
-            voices[line["speaker"]],
+            voice,
             Path(folder) / "voice",
             tone,
         )
 
-        levels = mouth_levels(pcm, samples_per_frame)
+        # Olah suara sebelum menghitung durasi dan gerakan mulut.
+        pcm, audio_stats = prepare_dialogue(
+            pcm,
+            shift=voice.get(
+                "shift_semitones", 0
+            ),
+            max_pause=data["timing"].get(
+                "max_pause_sec"
+            ),
+        )
+
+        levels = mouth_levels(
+            pcm,
+            samples_per_frame,
+        )
 
         lines.append(dict(
             line,
             start_frame=cursor,
             end_frame=cursor + len(levels),
             levels=levels,
+            audio_stats=audio_stats,
         ))
+
         clips.append(pcm)
 
         cursor += (
             len(levels)
-            + round(data["timing"]["gap_sec"] * fps)
+            + round(
+                data["timing"]["gap_sec"] * fps
+            )
         )
 
     total = (
         lines[-1]["end_frame"]
-        + round(data["timing"]["tail_sec"] * fps)
+        + round(
+            data["timing"]["tail_sec"] * fps
+        )
     )
 
     require(
         total <= 30 * fps,
         "scene",
-        "adegan melebihi 30 detik; bagi menjadi beberapa adegan",
+        "adegan melebihi 30 detik; "
+        "bagi menjadi beberapa adegan",
     )
 
-    track = bytearray(total * samples_per_frame * 2)
+    # Buat jalur suara dengan panjang yang sesuai jumlah frame.
+    track = bytearray(
+        total * samples_per_frame * 2
+    )
 
     for line, pcm in zip(lines, clips):
-        start = line["start_frame"] * samples_per_frame * 2
+        start = (
+            line["start_frame"]
+            * samples_per_frame
+            * 2
+        )
+
         track[start:start + len(pcm)] = pcm
 
     scene = dict(
@@ -262,7 +330,11 @@ def compile_scene(bible, data, folder, tone=False, report=print):
         lines=lines,
         duration_sec=total / fps,
         total_frames=total,
-        audio_mode="tone_test" if tone else "edge_tts",
+        audio_mode=(
+            "tone_test"
+            if tone
+            else "edge_tts"
+        ),
     )
 
     return scene, bytes(track)

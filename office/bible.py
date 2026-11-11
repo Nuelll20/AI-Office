@@ -49,14 +49,46 @@ def entries(value, path, minimum=0):
 
 
 def voice(value, path):
-    object_fields(value, path, "provider id rate pitch")
-    require(value["provider"] == "edge_tts", path + ".provider",
-            "versi kontrak ini menggunakan edge_tts")
+    fields = "provider id rate pitch"
+
+    if isinstance(value, dict) and "shift_semitones" in value:
+        fields += " shift_semitones"
+
+    object_fields(value, path, fields)
+
+    require(
+        value["provider"] == "edge_tts",
+        path + ".provider",
+        "versi kontrak ini menggunakan edge_tts",
+    )
+
     text(value["id"], path + ".id")
-    text(value["rate"], path + ".rate", r"[+-][0-9]+%")
-    text(value["pitch"], path + ".pitch", r"[+-][0-9]+Hz")
-    require(-100 < int(value["rate"][:-1]) <= 100,
-            path + ".rate", "harus lebih dari -100% dan maksimal +100%")
+
+    text(
+        value["rate"],
+        path + ".rate",
+        r"[+-][0-9]+%",
+    )
+
+    text(
+        value["pitch"],
+        path + ".pitch",
+        r"[+-][0-9]+Hz",
+    )
+
+    require(
+        -100 < int(value["rate"][:-1]) <= 100,
+        path + ".rate",
+        "harus lebih dari -100% dan maksimal +100%",
+    )
+
+    if "shift_semitones" in value:
+        number(
+            value["shift_semitones"],
+            path + ".shift_semitones",
+            -4,
+            4,
+        )
 
 
 def validate_prop_style(value, path):

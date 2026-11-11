@@ -8,23 +8,65 @@ import subprocess
 import sys
 import tempfile
 import wave
+import re
+import time
 from pathlib import Path
 
 RATE = 24000
 
 
 def run(command):
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        timeout=180,
-    )
-    if result.returncode:
-        raise ValueError(
-            f"{Path(command[0]).name} gagal: "
-            f"kode {result.returncode}."
+    # Maksimal tiga percobaan untuk gangguan koneksi sementara.
+    for attempt in range(1, 4):
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            timeout=180,
         )
 
+        if result.returncode == 0:
+            return
+
+        details = (
+            result.stderr or result.stdout
+        ).decode(
+            "utf-8",
+            errors="replace",
+        ).strip()
+
+        if not details:
+            details = (
+                "Program tidak memberikan "
+                "rincian kesalahan."
+            )
+
+        temporary_error = re.search(
+            r"WSServerHandshakeError:\s*(502|503|504)\b",
+            details,
+        )
+
+        if (
+            temporary_error is not None
+            and attempt < 3
+        ):
+            delay = 2 ** attempt
+
+            print(
+                "Layanan suara mengembalikan "
+                f"HTTP {temporary_error.group(1)}. "
+                f"Mencoba kembali dalam {delay} detik "
+                f"(percobaan {attempt + 1}/3).",
+                flush=True,
+            )
+
+            time.sleep(delay)
+            continue
+
+        raise ValueError(
+            f"{Path(command[0]).name} gagal "
+            f"(kode {result.returncode}).\n"
+            f"{details}"
+        )
 
 def read_pcm(path):
     with wave.open(str(path), "rb") as source:
