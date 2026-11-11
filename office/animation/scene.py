@@ -16,11 +16,22 @@ from ..bible import (
 )
 from .motion_preview import render_preview
 from .preview import font
-from .props import draw_scene_props, validate_props
+from .props import (
+    draw_scene_props,
+    validate_props,
+    prop_center,
+    resolve_appearance,
+)
+from .prop_actions import (
+    compile_actions,
+    sample_action,
+    validate_actions,
+)
 from .scene_audio import RATE, mouth_levels, speech, write_pcm
 from .walking import WalkPlan
 from .walk_renderer import draw_walker
 from .audio_quality import prepare_dialogue
+
 
 
 def plan_actor(item):
@@ -40,11 +51,18 @@ def load_scene(path, bible):
         parse_constant=invalid_constant,
     )
 
+    fields = (
+        "schema_version video_id bible_revision title "
+        "location ground_y timing actors props lines"
+    )
+
+    if isinstance(data, dict) and "actions" in data:
+        fields += " actions"
+
     object_fields(
         data,
         "scene",
-        "schema_version video_id bible_revision title "
-        "location ground_y timing actors props lines",
+        fields,
     )
 
     number(
@@ -210,8 +228,12 @@ def load_scene(path, bible):
         line_path = f"lines[{index}]"
         fields = "id speaker text"
 
-        if isinstance(line, dict) and "gesture" in line:
-            fields += " gesture"
+        for optional in (
+            "gesture",
+            "gesture_target",
+        ):
+            if isinstance(line, dict) and optional in line:
+                fields += " " + optional
 
         object_fields(
             line,
@@ -280,6 +302,7 @@ def load_scene(path, bible):
                 "memuat kata terlarang",
             )
 
+    validate_actions(data)
     return data
 
 
@@ -298,7 +321,6 @@ def compile_scene(
         for item in bible["characters"]
     }
 
-    # Dialog dimulai setelah semua tokoh selesai berjalan.
     end_walk = max(
         item["end_time"]
         for item in data["actors"].values()
@@ -324,7 +346,6 @@ def compile_scene(
 
         voice = voices[line["speaker"]]
 
-        # Ambil suara dari TTS atau cache.
         pcm = speech(
             line["text"],
             voice,
@@ -332,20 +353,14 @@ def compile_scene(
             tone,
         )
 
-        # Olah suara sebelum menghitung durasi dan gerakan mulut.
         pcm, audio_stats = prepare_dialogue(
             pcm,
-            shift=voice.get(
-                "shift_semitones", 0
-            ),
-            max_pause=data["timing"].get(
-                "max_pause_sec"
-            ),
+            shift=voice.get("shift_semitones", 0),
+            max_pause=data["timing"].get("max_pause_sec"),
         )
 
         levels = mouth_levels(
-            pcm,
-            samples_per_frame,
+            pcm, samples_per_frame
         )
 
         lines.append(dict(
@@ -360,16 +375,24 @@ def compile_scene(
 
         cursor += (
             len(levels)
-            + round(
-                data["timing"]["gap_sec"] * fps
-            )
+            + round(data["timing"]["gap_sec"] * fps)
         )
 
     total = (
         lines[-1]["end_frame"]
-        + round(
-            data["timing"]["tail_sec"] * fps
-        )
+        + round(data["timing"]["tail_sec"] * fps)
+    )
+
+    tracks = compile_actions(
+        data, lines, fps
+    )
+
+    total = max(
+        [total]
+        + [
+            item["end_frame"]
+            for item in tracks
+        ]
     )
 
     require(
@@ -379,7 +402,6 @@ def compile_scene(
         "bagi menjadi beberapa adegan",
     )
 
-    # Buat jalur suara dengan panjang yang sesuai jumlah frame.
     track = bytearray(
         total * samples_per_frame * 2
     )
@@ -396,6 +418,7 @@ def compile_scene(
     scene = dict(
         data,
         lines=lines,
+        action_tracks=tracks,
         duration_sec=total / fps,
         total_frames=total,
         audio_mode=(
@@ -411,17 +434,23 @@ def compile_scene(
 def frame(bible, scene, seconds):
     width = bible["target"]["width"]
     height = bible["target"]["height"]
+    fps = bible["target"]["fps"]
     palette = bible["visual"]["palette"]
 
-    image = Image.new("RGB", (width, height), palette["paper"])
-    draw = ImageDraw.Draw(image)
+    image = Image.new(
+        "RGB",
+        (width, height),
+        palette["paper"],
+    )
 
+    draw = ImageDraw.Draw(image)
     horizon = scene["ground_y"] - 90
 
     draw.rectangle(
         (0, horizon, width, height),
         fill=palette["head_fill"],
     )
+
     draw.line(
         (0, horizon, width, horizon),
         fill=palette["ink"],
@@ -434,6 +463,7 @@ def frame(bible, scene, seconds):
         font=font(30),
         fill=palette["ink"],
     )
+
     draw.text(
         (40, 95),
         scene["location"],
@@ -441,12 +471,15 @@ def frame(bible, scene, seconds):
         fill=palette["ink"],
     )
 
-    index = round(seconds * bible["target"]["fps"])
+    index = round(seconds * fps)
 
     active = next(
         (
-            line for line in scene["lines"]
-            if line["start_frame"] <= index < line["end_frame"]
+            line
+            for line in scene["lines"]
+            if line["start_frame"]
+            <= index
+            < line["end_frame"]
         ),
         None,
     )
@@ -455,9 +488,20 @@ def frame(bible, scene, seconds):
         item["id"]: item
         for item in bible["characters"]
     }
+
     plans = {
         identity: plan_actor(item)
         for identity, item in scene["actors"].items()
+    }
+
+    props = {
+        item["id"]: item
+        for item in scene["props"]
+    }
+
+    definitions = {
+        item["id"]: item
+        for item in bible["props"]
     }
 
     carrying = {
@@ -466,8 +510,11 @@ def frame(bible, scene, seconds):
         if item["owner"] is not None
     }
 
+    states = {}
+    measured = {}
     anchors = {}
 
+    # Tahap pertama menghitung posisi tangan dan benda.
     for order, (identity, item) in enumerate(
         scene["actors"].items()
     ):
@@ -491,7 +538,13 @@ def frame(bible, scene, seconds):
 
         level = 0.0
 
-        if active and active["speaker"] == identity:
+        gesture_line = (
+            active
+            if active and active["speaker"] == identity
+            else None
+        )
+
+        if gesture_line is not None:
             offset = index - active["start_frame"]
 
             recent = active["levels"][
@@ -500,67 +553,144 @@ def frame(bible, scene, seconds):
 
             level = sum(recent) / len(recent)
 
-        gesture_line = (
-            active
-            if active and active["speaker"] == identity
-            else None
-        )
-
         kind, weight, phase = sample_gesture(
             gesture_line,
             index,
-            bible["target"]["fps"],
+            fps,
         )
 
-        anchors[identity] = draw_walker(
+        action, action_weight = sample_action(
+            scene.get("action_tracks", []),
+            identity,
+            index,
+            fps,
+        )
+
+        states[identity] = dict(
+            mouth=level,
+            gesture=weight,
+            facing=facing,
+            gesture_kind=kind,
+            gesture_phase=phase,
+            carrying=identity in carrying,
+            prop_action=action,
+            prop_weight=action_weight,
+            blink=(
+                (seconds + order * 0.7) % 3.5
+                < 0.1
+            ),
+        )
+
+        measured[identity] = draw_walker(
             image,
             characters[identity],
             bible["visual"],
             plan,
             seconds,
             scene["ground_y"],
-            mouth=level,
-            gesture=weight,
-            facing=facing,
-            blink=(
-                (seconds + order * 0.7) % 3.5
-                < 0.1
-            ),
-            gesture_kind=kind,
-            gesture_phase=phase,
-            carrying=identity in carrying,
+            measure=True,
+            **states[identity],
         )
 
-    draw_scene_props(image, scene["props"], bible, anchors)
+    # Tahap kedua menggambar tokoh.
+    for identity in scene["actors"]:
+        target = None
+
+        if (
+            active
+            and active["speaker"] == identity
+            and "gesture_target" in active
+        ):
+            item = props[
+                active["gesture_target"]
+            ]
+
+            anchor = measured.get(
+                item["owner"]
+            )
+
+            definition = definitions[
+                item["id"]
+            ]
+
+            center = prop_center(
+                item,
+                definition,
+                anchor,
+            )
+
+            size = resolve_appearance(
+                item,
+                definition,
+            )["size"]
+
+            radius = (
+                size
+                * (
+                    1
+                    if anchor is None
+                    else anchor["scale"]
+                )
+                / 2
+            )
+
+            target = (*center, radius)
+
+        anchors[identity] = draw_walker(
+            image,
+            characters[identity],
+            bible["visual"],
+            plans[identity],
+            seconds,
+            scene["ground_y"],
+            point_target=target,
+            measure=False,
+            **states[identity],
+        )
+
+    # Wajib menggambar benda setelah seluruh tokoh digambar.
+    # Pemanggilan ini berada di luar perulangan dan if active.
+    draw_scene_props(
+        image,
+        scene["props"],
+        bible,
+        anchors,
+    )
 
     if active:
         top = round(height * 0.81)
 
         draw.rounded_rectangle(
-            (25, top, width-25, height-35),
+            (25, top, width - 25, height - 35),
             radius=18,
             fill=palette["paper"],
             outline=palette["ink"],
             width=2,
         )
 
-        speaker = characters[active["speaker"]]
+        speaker = characters[
+            active["speaker"]
+        ]
 
         draw.text(
-            (45, top+15),
+            (45, top + 15),
             speaker["name"],
             font=font(23),
             fill=speaker["color"],
         )
 
-        rows, current = [], ""
+        rows = []
+        current = ""
         subtitle_font = font(27)
 
         for word in active["text"].split():
             trial = (current + " " + word).strip()
 
             if (
-                draw.textlength(trial, font=subtitle_font) > width-90
+                draw.textlength(
+                    trial,
+                    font=subtitle_font,
+                ) > width - 90
                 and current
             ):
                 rows.append(current)
@@ -575,9 +705,13 @@ def frame(bible, scene, seconds):
             "subtitle",
             "kalimat terlalu panjang; pecah dialog",
         )
+
         require(
             all(
-                draw.textlength(row, font=subtitle_font) <= width-90
+                draw.textlength(
+                    row,
+                    font=subtitle_font,
+                ) <= width - 90
                 for row in rows
             ),
             "subtitle",
@@ -585,7 +719,7 @@ def frame(bible, scene, seconds):
         )
 
         draw.multiline_text(
-            (45, top+50),
+            (45, top + 50),
             "\n".join(rows),
             font=subtitle_font,
             fill=palette["ink"],

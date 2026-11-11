@@ -1,0 +1,114 @@
+{
+  "schema_version": 3,
+  "revision": 7,
+  "video_id": "animation-contract-demo",
+  "idea": "Dua tokoh menyelidiki sumber pesan yang bertentangan dengan kejadian di depan mereka.",
+  "target": {
+    "width": 720,
+    "height": 1280,
+    "fps": 30,
+    "duration_sec": 45,
+    "language": "id"
+  },
+  "visual": {
+    "style": "stickman_2d",
+    "face": "two_eyes_nose_curved_mouth",
+    "palette": {
+      "ink": "#17364A",
+      "paper": "#F7F4EA",
+      "head_fill": "#FFFDF5"
+    }
+  },
+  "characters": [
+    {
+      "id": "dimas",
+      "name": "Dimas",
+      "description": "Stickman dengan badan biru; identitasnya tetap di semua adegan.",
+      "color": "#287FD0",
+      "voice": {
+        "provider": "edge_tts",
+        "id": "id-ID-ArdiNeural",
+        "rate": "+0%",
+        "pitch": "+0Hz",
+        "shift_semitones": -2
+      }
+    },
+    {
+      "id": "raka",
+      "name": "Raka",
+      "description": "Stickman dengan badan oranye; identitasnya tetap di semua adegan.",
+      "color": "#F28C38",
+      "voice": {
+        "provider": "edge_tts",
+        "id": "id-ID-ArdiNeural",
+        "rate": "+4%",
+        "pitch": "+0Hz",
+        "shift_semitones": 2
+      }
+    }
+  ],
+  "props": [
+    {
+      "id": "radio-1",
+      "name": "Radio genggam",
+      "description": "Radio gelap dengan antena dan layar tosca. Pemegangnya ditentukan oleh data adegan.",
+      "appearance": {
+        "asset": "radio_handle_v1",
+        "size": 60,
+        "accent": "#73E8E0",
+        "views": {}
+      }
+    },
+    {
+      "id": "parcel-1",
+      "name": "Paket",
+      "description": "Kotak cokelat dengan pita krem.",
+      "appearance": {
+        "asset": "parcel_v2",
+        "size": 96,
+        "accent": "#B98559",
+        "views": {}
+      }
+    },
+    {
+      "id": "book-1",
+      "name": "Catatan Laut",
+      "description": "Buku bersampul ungu dengan lambang ombak emas dan judul Catatan Laut.",
+      "appearance": {
+        "asset": "book_open_v1",
+        "size": 110,
+        "accent": "#59406B",
+        "views": {
+          "held": {
+            "asset": "book_closed_sea_v1",
+            "size": 95,
+            "accent": "#59406B",
+            "label": "CATATAN LAUT"
+          },
+          "open": {
+            "asset": "book_open_v1",
+            "size": 90,
+            "accent": "#59406B"
+          }
+        }
+      }
+    }
+  ],
+  "narration": {
+    "tone": "Misterius tetapi jelas; hubungan sebab-akibat dan penyelesaian harus dapat dipahami.",
+    "words_per_second": 2.5,
+    "voice": {
+      "provider": "edge_tts",
+      "id": "id-ID-ArdiNeural",
+      "rate": "-5%",
+      "pitch": "+0Hz"
+    }
+  },
+  "constraints": {
+    "forbidden_words": [],
+    "forbidden_visuals": [
+      "panel komik atau grid pembagi adegan",
+      "perubahan warna identitas karakter tanpa alasan cerita"
+    ]
+  }
+}

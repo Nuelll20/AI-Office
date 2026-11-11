@@ -9,6 +9,7 @@ from ..bible import (
     entries, invalid_constant, number, object_fields,
     require, text, unique_object,
 )
+import math
 from .preview import font
 from .prop_attachment import load_asset_layout, paste_attached
 
@@ -371,3 +372,57 @@ def draw_scene_props(image, items, bible, anchors):
                 ),
                 fill=characters[owner]["color"],
             )
+
+def prop_center(item, definition, anchor=None):
+    """Posisi pusat benda setelah pencerminan dan rotasi."""
+
+    if item["owner"] is None:
+        return item["x"], item["y"]
+
+    appearance = resolve_appearance(
+        item, definition
+    )
+
+    layout = load_asset_layout()[
+        appearance["asset"]
+    ]
+
+    scale = anchor["scale"]
+    direction = anchor["direction"]
+
+    size = max(
+        4,
+        round(appearance["size"] * scale),
+    )
+
+    gx, gy = (
+        value * (size - 1) / 100
+        for value in layout["grip"]
+    )
+
+    if direction < 0:
+        gx = size - 1 - gx
+
+    dx = (size - 1) / 2 - gx
+    dy = (size - 1) / 2 - gy
+
+    angle = math.radians(
+        -direction
+        * anchor["hand_angle"]
+        * layout["rotation_follow"]
+    )
+
+    x = (
+        anchor["hand"][0]
+        + item["offset_x"] * scale * direction
+    )
+
+    y = (
+        anchor["hand"][1]
+        + item["offset_y"] * scale
+    )
+
+    return (
+        x + dx * math.cos(angle) + dy * math.sin(angle),
+        y - dx * math.sin(angle) + dy * math.cos(angle),
+    )
