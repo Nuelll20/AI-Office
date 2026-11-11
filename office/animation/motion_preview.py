@@ -72,7 +72,12 @@ def frame(bible, timeline, seconds):
     return image
 
 
-def render_preview(bible, timeline, output, *, frame_renderer=None):
+def render_preview(
+    bible, timeline, output, *,
+    frame_renderer=None,
+    audio_path=None,
+    frame_count=None,
+):
     render_frame = frame if frame_renderer is None else frame_renderer
     if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
         raise ValueError("FFmpeg dan FFprobe harus tersedia di PATH.")
@@ -91,7 +96,19 @@ def render_preview(bible, timeline, output, *, frame_renderer=None):
             "Preview dibatasi sisi 1920 px, 60 fps, dan 30 detik."
         )
 
-    frames = math.ceil(timeline["duration_sec"] * fps)
+    frames = (
+        math.ceil(timeline["duration_sec"] * fps)
+        if frame_count is None
+        else frame_count
+    )
+
+    if type(frames) is not int or frames < 1:
+        raise ValueError(
+            "Jumlah frame harus bilangan bulat positif."
+        )
+
+    if abs(frames / fps - timeline["duration_sec"]) > 1 / fps:
+        raise ValueError("Jumlah frame dan durasi tidak cocok.")
     output = Path(output)
 
     if output.suffix.lower() != ".mp4":
@@ -118,6 +135,17 @@ def render_preview(bible, timeline, output, *, frame_renderer=None):
             "-movflags", "+faststart",
             str(temporary),
         ]
+
+        if audio_path is not None:
+            position = command.index("-an")
+
+            command[position:position+1] = [
+                "-i", str(audio_path),
+                "-map", "0:v:0",
+                "-map", "1:a:0",
+                "-c:a", "aac",
+                "-b:a", "128k",
+            ]
 
         with log.open("wb") as errors:
             process = subprocess.Popen(
@@ -200,13 +228,51 @@ def render_preview(bible, timeline, output, *, frame_renderer=None):
             raise ValueError(
                 "Hasil render tidak sesuai spesifikasi preview."
             )
+        if audio_path is not None:
+            probe = subprocess.run(
+                [
+                    "ffprobe", "-v", "error",
+                    "-show_entries",
+                    "stream=codec_type,duration",
+                    "-of", "json",
+                    str(temporary),
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=120,
+            )
 
+            streams = json.loads(probe.stdout)["streams"]
+
+            if sorted(
+                item["codec_type"] for item in streams
+            ) != ["audio", "video"]:
+                raise ValueError(
+                    "Hasil harus memiliki satu video dan satu audio."
+                )
+
+            for item in streams:
+                duration = float(item.get("duration", "nan"))
+
+                if (
+                    not math.isfinite(duration)
+                    or abs(duration - frames/fps) > 1/fps + 0.01
+                ):
+                    raise ValueError(
+                        "Durasi audio/video tidak sesuai jadwal frame."
+                    )
         temporary.replace(output)
 
-    print(f"SELESAI: {output.resolve()}")
+    audio_label = (
+        "dengan audio"
+        if audio_path is not None
+        else "tanpa audio"
+    )
+
     print(
         f"{width}x{height} | {fps} fps | "
-        f"{frames} frame | tanpa audio"
+        f"{frames} frame | {audio_label}"
     )
 
 

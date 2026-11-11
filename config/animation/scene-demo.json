@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "video_id": "animation-contract-demo",
+  "bible_revision": 5,
+  "title": "Pertemuan di ruang arsip",
+  "location": "Ruang arsip",
+  "ground_y": 850,
+  "timing": {
+    "after_walk_sec": 0.6,
+    "gap_sec": 0.45,
+    "tail_sec": 1
+  },
+  "actors": {
+    "dimas": {
+      "start_x": 180,
+      "end_x": 300,
+      "start_time": 0.6,
+      "end_time": 2.8,
+      "scale": 1,
+      "look_at": "raka"
+    },
+    "raka": {
+      "start_x": 550,
+      "end_x": 550,
+      "start_time": 0,
+      "end_time": 0.5,
+      "scale": 1,
+      "look_at": "dimas"
+    }
+  },
+  "props": [
+    {
+      "id": "radio-1",
+      "owner": "dimas",
+      "offset_x": 0,
+      "offset_y": 0
+    },
+    {
+      "id": "book-1",
+      "owner": "raka",
+      "offset_x": 0,
+      "offset_y": 0
+    }
+  ],
+  "lines": [
+    {
+      "id": "l1",
+      "speaker": "dimas",
+      "text": "Raka, buku apa yang kamu bawa?"
+    },
+    {
+      "id": "l2",
+      "speaker": "raka",
+      "text": "Catatan Laut. Aku menemukannya di ruang arsip."
+    },
+    {
+      "id": "l3",
+      "speaker": "dimas",
+      "text": "Sampul ungu dan lambang ombaknya cocok dengan petunjuk."
+    }
+  ]
+}

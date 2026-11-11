@@ -4,7 +4,10 @@ import math
 from PIL import Image, ImageDraw
 
 
-def draw_profile_head(image, character, visual, x, y, scale, direction):
+def draw_profile_head(
+    image, character, visual, x, y, scale, direction,
+    mouth=0, blink=False,
+):
     layer = Image.new("RGBA", (111, 101))
     draw = ImageDraw.Draw(layer)
 
@@ -41,19 +44,37 @@ def draw_profile_head(image, character, visual, x, y, scale, direction):
     )
 
     # Satu mata untuk wajah profil.
-    draw.ellipse(
-        (cx+13, cy-14, cx+21, cy-6),
-        fill=ink,
-    )
-
-    mouth = [
-        (
-            cx + 21 + i,
-            cy + 16 + 3 * math.sin(math.pi * i / 13),
+    if blink:
+        draw.line(
+            (cx+13, cy-10, cx+21, cy-10),
+            fill=ink,
+            width=3,
         )
-        for i in range(14)
-    ]
-    draw.line(mouth, fill=ink, width=3, joint="curve")
+    else:
+        draw.ellipse(
+            (cx+13, cy-14, cx+21, cy-6),
+            fill=ink,
+        )
+
+    if mouth > 0.08:
+        draw.polygon(
+            [
+                (cx+21, cy+16),
+                (cx+33, cy+15),
+                (cx+30, cy+17+7*mouth),
+                (cx+23, cy+18+5*mouth),
+            ],
+            fill=ink,
+        )
+    else:
+        smile = [
+            (
+                cx + 21 + i,
+                cy + 16 + 3 * math.sin(math.pi * i / 13),
+            )
+            for i in range(14)
+        ]
+        draw.line(smile, fill=ink, width=3, joint="curve")
 
     if direction < 0:
         layer = layer.transpose(Image.Transpose.FLIP_LEFT_RIGHT)

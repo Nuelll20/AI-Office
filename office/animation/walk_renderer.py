@@ -4,12 +4,53 @@ import math
 from PIL import ImageDraw
 
 from .walk_details import draw_profile_head, draw_contact_shadows
+from dataclasses import replace
 
-
-def draw_walker(image, character, visual, plan, seconds, ground_y):
+def draw_walker(
+    image, character, visual, plan, seconds, ground_y, *,
+    mouth=0, gesture=0, facing=None, blink=False,
+):
     pose = plan.sample(seconds)
     scale = plan.leg_length / 66.3
     direction = 1 if plan.end_x >= plan.start_x else -1
+
+    if facing is not None:
+        if type(facing) is not int or facing not in (-1, 1):
+            raise ValueError("facing harus -1 atau 1.")
+
+        if facing != direction:
+            if pose.activity:
+                raise ValueError(
+                    "Perubahan arah badan dilakukan setelah berhenti."
+                )
+
+            center = pose.hip[0]
+
+            pose = replace(
+                pose,
+                knees=tuple(
+                    (2*center-x, y)
+                    for x, y in pose.knees
+                ),
+                feet=tuple(
+                    (2*center-x, y)
+                    for x, y in pose.feet
+                ),
+            )
+            direction = facing
+
+    for name, value in (("mouth", mouth), ("gesture", gesture)):
+        if (
+            type(value) not in (int, float)
+            or not math.isfinite(value)
+            or not 0 <= value <= 1
+        ):
+            raise ValueError(
+                f"{name} harus berupa angka 0 sampai 1."
+            )
+
+    if type(blink) is not bool:
+        raise ValueError("blink harus boolean.")
 
     ink = visual["palette"]["ink"]
     paper = visual["palette"]["paper"]
@@ -104,7 +145,13 @@ def draw_walker(image, character, visual, plan, seconds, ground_y):
             rest * (1-pose.activity)
             + sign * swing * pose.activity
         )
-        angles = (upper, upper + 12 * pose.activity)
+        upper += 18 * gesture if index == 1 else 0
+
+        angles = (
+            upper,
+            upper + 12 * pose.activity
+            + (24 * gesture if index == 1 else 0),
+        )
         points = [(0, 66.3)]
 
         for length, degrees in zip((66.3, 73.1), angles):
@@ -139,6 +186,8 @@ def draw_walker(image, character, visual, plan, seconds, ground_y):
         head_y,
         scale,
         direction,
+        mouth=mouth,
+        blink=blink,
     )
 
     return {
