@@ -1,0 +1,156 @@
+"""Pengatur langkah 2D. Lantai pada y=0; nilai y negatif berada di atasnya."""
+import math
+from dataclasses import dataclass
+
+
+def _finite(value, name):
+    if type(value) not in (int, float) or not math.isfinite(value):
+        raise ValueError(f"{name} harus berupa angka berhingga.")
+
+
+def _smooth(value):
+    value = max(0.0, min(1.0, value))
+    return value * value * (3 - 2 * value)
+
+
+@dataclass(frozen=True)
+class WalkPose:
+    hip: tuple
+    knees: tuple
+    feet: tuple
+    planted: tuple
+
+
+@dataclass(frozen=True)
+class WalkPlan:
+    start_x: float
+    end_x: float
+    start_time: float
+    end_time: float
+    leg_length: float = 66.3
+
+    def __post_init__(self):
+        for name in (
+            "start_x",
+            "end_x",
+            "start_time",
+            "end_time",
+            "leg_length",
+        ):
+            _finite(getattr(self, name), name)
+
+        if self.start_time < 0 or self.end_time <= self.start_time:
+            raise ValueError(
+                "Waktu mulai harus >= 0 dan waktu selesai harus lebih besar."
+            )
+
+        if not 0.1 <= self.leg_length <= 1000:
+            raise ValueError(
+                "Panjang satu ruas kaki harus di antara 0.1 dan 1000."
+            )
+
+        _finite(self.end_x - self.start_x, "jarak")
+        _finite(self.end_time - self.start_time, "durasi")
+
+        if self.end_time - self.start_time < self.step_count * 0.2:
+            raise ValueError(
+                "Durasi terlalu singkat untuk jumlah langkah; tambah durasi."
+            )
+
+    @property
+    def step_count(self):
+        distance = abs(self.end_x - self.start_x)
+        return 2 * math.ceil(distance / (1.4 * self.leg_length))
+
+    def sample(self, seconds):
+        _finite(seconds, "seconds")
+
+        progress = _smooth(
+            (seconds - self.start_time)
+            / (self.end_time - self.start_time)
+        )
+
+        distance = self.end_x - self.start_x
+        direction = 1 if distance >= 0 else -1
+
+        steps = self.step_count
+        phase = progress * steps
+        completed = min(math.floor(phase), steps)
+        fraction = phase - completed
+
+        spread = self.leg_length * 0.35
+
+        # Sedikit tekukan lutut memberi ruang saat mulai dan berhenti.
+        height = (
+            math.sqrt((2 * self.leg_length) ** 2 - spread ** 2)
+            - self.leg_length * 0.04
+        )
+
+        feet = [
+            [self.start_x - spread, 0.0],
+            [self.start_x + spread, 0.0],
+        ]
+
+        planted = [True, True]
+        drop = 0.0
+
+        if steps:
+            stride = distance / (steps // 2)
+
+            first = 0 if direction == 1 else 1
+            other = 1 - first
+
+            feet[first][0] += ((completed + 1) // 2) * stride
+            feet[other][0] += (completed // 2) * stride
+
+            if completed < steps and fraction > 0:
+                swing = first if completed % 2 == 0 else other
+
+                feet[swing][0] += stride * _smooth(fraction)
+
+                feet[swing][1] = (
+                    -self.leg_length * 0.25
+                    * math.sin(math.pi * fraction) ** 2
+                )
+
+                planted[swing] = False
+
+            drop = self.leg_length * 0.12 * _smooth(
+                min(phase, steps - phase)
+            )
+
+        hip = (
+            self.start_x + distance * progress,
+            -height + drop,
+        )
+
+        knees = []
+
+        for foot in feet:
+            dx = foot[0] - hip[0]
+            dy = foot[1] - hip[1]
+            reach = math.hypot(dx, dy)
+
+            if reach > 2 * self.leg_length + 1e-7:
+                raise ValueError(
+                    "Kaki tidak dapat mencapai target tanpa meregang."
+                )
+
+            bend = math.sqrt(
+                max(
+                    0.0,
+                    self.leg_length ** 2 - (reach / 2) ** 2,
+                )
+            )
+
+            knees.append((
+                hip[0] + dx / 2 + direction * dy / reach * bend,
+                hip[1] + dy / 2 - direction * dx / reach * bend,
+            ))
+
+        return WalkPose(
+            hip=hip,
+            knees=tuple(knees),
+            feet=tuple(tuple(foot) for foot in feet),
+            planted=tuple(planted),
+        )
