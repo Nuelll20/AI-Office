@@ -18,7 +18,13 @@ CREATE TABLE IF NOT EXISTS events(
   action TEXT, text TEXT, video_id TEXT);
 """
 
-JSON_FIELDS = ("style_pack", "script", "scenes")
+JSON_FIELDS = (
+    "style_pack",
+    "script",
+    "scenes",
+    "brief",
+    "story_bible",
+)
 
 
 def _conn():
@@ -28,10 +34,37 @@ def _conn():
 
 
 def init():
-    c = _conn()
-    c.executescript(SCHEMA)
-    c.commit()
-    c.close()
+    connection = _conn()
+
+    try:
+        connection.executescript(SCHEMA)
+        connection.execute("BEGIN IMMEDIATE")
+
+        columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(videos)")
+        }
+
+        additions = {
+            "brief": "TEXT",
+            "story_bible": "TEXT",
+            "bible_revision": "INTEGER NOT NULL DEFAULT 0",
+        }
+
+        for name, definition in additions.items():
+            if name not in columns:
+                connection.execute(
+                    f"ALTER TABLE videos ADD COLUMN {name} {definition}"
+                )
+
+        connection.commit()
+
+    except Exception:
+        connection.rollback()
+        raise
+
+    finally:
+        connection.close()
 
 
 def run(sql, args=()):
@@ -58,15 +91,56 @@ def one(sql, args=()):
 
 
 # ---- videos
-def add_video(idea):
-    y, w, _ = datetime.date.today().isocalendar()
-    prefix = f"{y}-w{w:02d}-"
-    n = len(query("SELECT id FROM videos WHERE id LIKE ?", (prefix + "%",))) + 1
-    vid = f"{prefix}{n:02d}"
-    now = time.time()
-    run("INSERT INTO videos(id,idea,status,created_at,updated_at) VALUES(?,?,?,?,?)",
-        (vid, idea, "queued", now, now))
-    return vid
+def add_video(idea, *, brief=None):
+    if not isinstance(idea, str) or not idea.strip():
+        raise ValueError("Cerita tidak boleh kosong.")
+
+    if brief is not None and not isinstance(brief, dict):
+        raise ValueError("Brief harus berupa objek.")
+
+    year, week, _ = datetime.date.today().isocalendar()
+    prefix = f"{year}-w{week:02d}-"
+
+    connection = _conn()
+
+    try:
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+
+            rows = connection.execute(
+                "SELECT id FROM videos WHERE id LIKE ?",
+                (prefix + "%",),
+            ).fetchall()
+
+            numbers = [
+                int(row["id"][len(prefix):])
+                for row in rows
+                if row["id"][len(prefix):].isdigit()
+            ]
+
+            video_id = f"{prefix}{max(numbers, default=0) + 1:02d}"
+            now = time.time()
+
+            connection.execute(
+                "INSERT INTO videos"
+                "(id,idea,status,created_at,updated_at,brief) "
+                "VALUES(?,?,?,?,?,?)",
+                (
+                    video_id,
+                    idea.strip(),
+                    "queued",
+                    now,
+                    now,
+                    json.dumps(brief, ensure_ascii=False)
+                    if brief is not None
+                    else None,
+                ),
+            )
+
+        return video_id
+
+    finally:
+        connection.close()
 
 
 def get_video(vid):
@@ -80,7 +154,7 @@ def get_video(vid):
 
 
 def update_video(vid, **fields):
-    allowed = {"status", "idea", *JSON_FIELDS}
+    allowed = {"status", "idea", "style_pack", "script", "scenes"}
     sets, args = [], []
     for k, val in fields.items():
         if k not in allowed:
