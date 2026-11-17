@@ -91,56 +91,70 @@ def one(sql, args=()):
 
 
 # ---- videos
-def add_video(idea, *, brief=None):
+def add_video(idea, *, brief=None, connection=None):
     if not isinstance(idea, str) or not idea.strip():
         raise ValueError("Cerita tidak boleh kosong.")
 
     if brief is not None and not isinstance(brief, dict):
         raise ValueError("Brief harus berupa objek.")
 
-    year, week, _ = datetime.date.today().isocalendar()
-    prefix = f"{year}-w{week:02d}-"
-
-    connection = _conn()
+    owned = connection is None
+    connection = _conn() if owned else connection
 
     try:
-        with connection:
+        if owned:
             connection.execute("BEGIN IMMEDIATE")
-
-            rows = connection.execute(
-                "SELECT id FROM videos WHERE id LIKE ?",
-                (prefix + "%",),
-            ).fetchall()
-
-            numbers = [
-                int(row["id"][len(prefix):])
-                for row in rows
-                if row["id"][len(prefix):].isdigit()
-            ]
-
-            video_id = f"{prefix}{max(numbers, default=0) + 1:02d}"
-            now = time.time()
-
-            connection.execute(
-                "INSERT INTO videos"
-                "(id,idea,status,created_at,updated_at,brief) "
-                "VALUES(?,?,?,?,?,?)",
-                (
-                    video_id,
-                    idea.strip(),
-                    "queued",
-                    now,
-                    now,
-                    json.dumps(brief, ensure_ascii=False)
-                    if brief is not None
-                    else None,
-                ),
+        elif not connection.in_transaction:
+            raise ValueError(
+                "Koneksi bersama harus berada dalam transaksi."
             )
+
+        year, week, _ = datetime.date.today().isocalendar()
+        prefix = f"{year}-w{week:02d}-"
+
+        rows = connection.execute(
+            "SELECT id FROM videos WHERE id LIKE ?",
+            (prefix + "%",),
+        ).fetchall()
+
+        numbers = [
+            int(row["id"][len(prefix):])
+            for row in rows
+            if row["id"][len(prefix):].isdigit()
+        ]
+
+        video_id = f"{prefix}{max(numbers, default=0) + 1:02d}"
+        now = time.time()
+
+        connection.execute(
+            "INSERT INTO videos"
+            "(id,idea,status,created_at,updated_at,brief) "
+            "VALUES(?,?,?,?,?,?)",
+            (
+                video_id,
+                idea.strip(),
+                "queued",
+                now,
+                now,
+                json.dumps(brief, ensure_ascii=False)
+                if brief is not None
+                else None,
+            ),
+        )
+
+        if owned:
+            connection.commit()
 
         return video_id
 
+    except Exception:
+        if owned:
+            connection.rollback()
+        raise
+
     finally:
-        connection.close()
+        if owned:
+            connection.close()
 
 
 def get_video(vid):
