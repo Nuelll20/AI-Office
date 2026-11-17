@@ -221,7 +221,13 @@ def get_context(video_id):
     }
 
 
-def save_bible(video_id, bible, *, expected_revision):
+def save_bible(
+    video_id,
+    bible,
+    *,
+    expected_revision,
+    connection=None,
+):
     validate_bible(bible)
 
     check(
@@ -235,46 +241,61 @@ def save_bible(video_id, bible, *, expected_revision):
         allow_nan=False,
     )
 
-    connection = db._conn()
+    owned = connection is None
+    connection = db._conn() if owned else connection
 
     try:
-        with connection:
+        if owned:
             connection.execute("BEGIN IMMEDIATE")
-
-            row = connection.execute(
-                "SELECT * FROM videos WHERE id=?",
-                (video_id,),
-            ).fetchone()
-
-            check(row is not None, "Pekerjaan tidak ditemukan.")
-
-            if row["bible_revision"] != expected_revision:
-                raise RevisionConflict(
-                    "Konteks telah berubah; baca versi terbaru dahulu."
-                )
-
+        else:
             check(
-                not any(
-                    row[key] is not None
-                    for key in ("style_pack", "script", "scenes")
-                ),
-                "Pedoman pekerjaan yang sudah diproduksi terkunci. "
-                "Revisi media belum diaktifkan pada tahap ini.",
+                connection.in_transaction,
+                "Koneksi bersama harus berada dalam transaksi.",
             )
 
-            connection.execute(
-                "UPDATE videos SET "
-                "story_bible=?, "
-                "bible_revision=bible_revision+1, "
-                "updated_at=? "
-                "WHERE id=?",
-                (encoded, time.time(), video_id),
+        row = connection.execute(
+            "SELECT * FROM videos WHERE id=?",
+            (video_id,),
+        ).fetchone()
+
+        check(row is not None, "Pekerjaan tidak ditemukan.")
+
+        if row["bible_revision"] != expected_revision:
+            raise RevisionConflict(
+                "Konteks telah berubah; baca versi terbaru dahulu."
             )
+
+        check(
+            not any(
+                row[key] is not None
+                for key in ("style_pack", "script", "scenes")
+            ),
+            "Pedoman pekerjaan yang sudah diproduksi terkunci. "
+            "Revisi media belum diaktifkan pada tahap ini.",
+        )
+
+        connection.execute(
+            "UPDATE videos SET "
+            "story_bible=?, "
+            "bible_revision=bible_revision+1, "
+            "updated_at=? "
+            "WHERE id=?",
+            (encoded, time.time(), video_id),
+        )
+
+        if owned:
+            connection.commit()
 
         return expected_revision + 1
 
+    except Exception:
+        if owned:
+            connection.rollback()
+        raise
+
     finally:
-        connection.close()
+        if owned:
+            connection.close()
 
 
 def main():
