@@ -11,8 +11,8 @@ from .story_context import get_context, save_bible
 
 
 @contextmanager
-def worker_lock():
-    path = DATA_DIR / "story-worker.lock"
+def worker_lock(name="story-worker.lock", actor="Agus"):
+    path = DATA_DIR / name
 
     with path.open("a+b") as handle:
         handle.seek(0, 2)
@@ -45,7 +45,7 @@ def worker_lock():
 
         except OSError:
             raise RuntimeError(
-                "Worker Agus lain masih berjalan. "
+                f"Worker {actor} lain masih berjalan. "
                 "Hentikan worker tersebut dahulu."
             ) from None
 
