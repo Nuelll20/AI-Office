@@ -1,4 +1,5 @@
 """Koneksi ComfyUI dan uji gambar untuk checkpoint SDXL standar."""
+
 import argparse
 import json
 import time
@@ -11,16 +12,10 @@ from .config import OUTPUT_DIR, env
 
 class ComfyUI:
     def __init__(self):
-        self.url = env(
-            "COMFYUI_URL", "http://127.0.0.1:8188"
-        ).rstrip("/")
+        self.url = env("COMFYUI_URL", "http://127.0.0.1:8188").rstrip("/")
 
     def call(self, path, payload=None, raw=False, timeout=30):
-        body = (
-            None
-            if payload is None
-            else json.dumps(payload).encode("utf-8")
-        )
+        body = None if payload is None else json.dumps(payload).encode("utf-8")
         req = request.Request(
             self.url + path,
             data=body,
@@ -31,56 +26,54 @@ class ComfyUI:
             with request.urlopen(req, timeout=timeout) as response:
                 result = response.read()
         except error.HTTPError as exc:
-            detail = exc.read().decode(
-                "utf-8", errors="replace"
-            )[:2000]
-            raise RuntimeError(
-                f"ComfyUI HTTP {exc.code}: {detail}"
-            ) from exc
+            detail = exc.read().decode("utf-8", errors="replace")[:2000]
+            raise RuntimeError(f"ComfyUI HTTP {exc.code}: {detail}") from exc
         except (error.URLError, OSError) as exc:
-            raise RuntimeError(
-                f"Tidak bisa mengakses {self.url}: {exc}"
-            ) from exc
+            raise RuntimeError(f"Tidak bisa mengakses {self.url}: {exc}") from exc
 
         return result if raw else json.loads(result)
 
     def checkpoints(self):
         data = self.call("/object_info/CheckpointLoaderSimple")
-        return data["CheckpointLoaderSimple"]["input"][
-            "required"
-        ]["ckpt_name"][0]
+        return data["CheckpointLoaderSimple"]["input"]["required"]["ckpt_name"][0]
 
-    def generate(self, prompt, output, seed=42):
+    def generate(
+        self,
+        prompt,
+        output,
+        seed=42,
+        *,
+        negative_prompt=None,
+    ):
         if not prompt.strip():
             raise ValueError("Prompt tidak boleh kosong.")
 
         if not 0 <= seed < 2**64:
-            raise ValueError(
-                "Seed harus antara 0 dan 2**64 - 1."
-            )
+            raise ValueError("Seed harus antara 0 dan 2**64 - 1.")
 
         checkpoint = env("COMFYUI_CHECKPOINT")
         if not checkpoint or checkpoint not in self.checkpoints():
             raise ValueError(
-                "COMFYUI_CHECKPOINT belum cocok. "
-                "Jalankan perintah check."
+                "COMFYUI_CHECKPOINT belum cocok. " "Jalankan perintah check."
             )
 
         timeout = float(env("COMFYUI_TIMEOUT", "600"))
         if not 0 < timeout <= 86400:
             raise ValueError(
-                "COMFYUI_TIMEOUT harus lebih dari 0, "
-                "maksimal 86400 detik."
+                "COMFYUI_TIMEOUT harus lebih dari 0, " "maksimal 86400 detik."
             )
 
         output = Path(output).resolve()
         if output.suffix.lower() != ".png":
-            raise ValueError(
-                "Output harus menggunakan ekstensi .png."
-            )
+            raise ValueError("Output harus menggunakan ekstensi .png.")
 
         output.parent.mkdir(parents=True, exist_ok=True)
-        graph = workflow(checkpoint, prompt, seed)
+        graph = workflow(
+            checkpoint,
+            prompt,
+            seed,
+            negative_prompt=negative_prompt,
+        )
 
         result = self.call(
             "/prompt",
@@ -95,9 +88,7 @@ class ComfyUI:
 
         prompt_id = result.get("prompt_id")
         if not prompt_id:
-            raise RuntimeError(
-                f"Respons tidak memiliki prompt_id: {result}"
-            )
+            raise RuntimeError(f"Respons tidak memiliki prompt_id: {result}")
 
         # Simpan identitas pekerjaan untuk pemeriksaan jika gagal.
         output.with_suffix(".job.json").write_text(
@@ -127,16 +118,10 @@ class ComfyUI:
             status = job.get("status", {})
 
             if status.get("status_str") == "error":
-                raise RuntimeError(
-                    f"Render gagal: {status.get('messages', [])}"
-                )
+                raise RuntimeError(f"Render gagal: {status.get('messages', [])}")
 
             if status.get("completed"):
-                images = (
-                    job.get("outputs", {})
-                    .get("7", {})
-                    .get("images", [])
-                )
+                images = job.get("outputs", {}).get("7", {}).get("images", [])
 
                 if not images:
                     raise RuntimeError(
@@ -155,13 +140,9 @@ class ComfyUI:
 
                 data = self.call("/view?" + query, raw=True)
 
-                if (
-                    len(data) < 33
-                    or not data.startswith(b"\x89PNG\r\n\x1a\n")
-                ):
+                if len(data) < 33 or not data.startswith(b"\x89PNG\r\n\x1a\n"):
                     raise RuntimeError(
-                        "Hasil unduhan bukan berkas PNG "
-                        "yang diharapkan."
+                        "Hasil unduhan bukan berkas PNG " "yang diharapkan."
                     )
 
                 # Tulis sementara, lalu pindahkan setelah lengkap.
@@ -170,9 +151,7 @@ class ComfyUI:
                 temporary.replace(output)
                 return output
 
-            time.sleep(
-                min(2, max(0, deadline - time.monotonic()))
-            )
+            time.sleep(min(2, max(0, deadline - time.monotonic())))
 
         raise TimeoutError(
             f"Batas tunggu habis. Job {prompt_id} mungkin "
@@ -181,9 +160,27 @@ class ComfyUI:
         )
 
 
-def workflow(checkpoint, prompt, seed):
+def workflow(
+    checkpoint,
+    prompt,
+    seed,
+    *,
+    negative_prompt=None,
+):
     def node(kind, **inputs):
-        return {"class_type": kind, "inputs": inputs}
+        return {
+            "class_type": kind,
+            "inputs": inputs,
+        }
+
+    negative = (
+        negative_prompt
+        if negative_prompt is not None
+        else (
+            "text, watermark, logo, blurry, "
+            "low quality, distorted anatomy"
+        )
+    )
 
     return {
         "1": node(
@@ -198,10 +195,7 @@ def workflow(checkpoint, prompt, seed):
         "3": node(
             "CLIPTextEncode",
             clip=["1", 1],
-            text=(
-                "text, watermark, logo, blurry, "
-                "low quality, distorted anatomy"
-            ),
+            text=negative,
         ),
         "4": node(
             "EmptyLatentImage",
@@ -237,9 +231,7 @@ def workflow(checkpoint, prompt, seed):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    commands = parser.add_subparsers(
-        dest="command", required=True
-    )
+    commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("check")
 
     generate = commands.add_parser("generate")
@@ -268,18 +260,10 @@ def main():
                 print("  (belum ada checkpoint)")
 
             selected = env("COMFYUI_CHECKPOINT")
-            print(
-                f"Checkpoint terpilih: "
-                f"{selected or '(belum diisi)'}"
-            )
-            print(
-                f"Nama ditemukan: "
-                f"{'YA' if selected in models else 'TIDAK'}"
-            )
+            print(f"Checkpoint terpilih: " f"{selected or '(belum diisi)'}")
+            print(f"Nama ditemukan: " f"{'YA' if selected in models else 'TIDAK'}")
         else:
-            path = client.generate(
-                args.prompt, args.output, args.seed
-            )
+            path = client.generate(args.prompt, args.output, args.seed)
             print(f"Gambar tersimpan: {path}")
 
     except (RuntimeError, ValueError, KeyError, OSError) as exc:
